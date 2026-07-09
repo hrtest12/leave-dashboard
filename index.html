@@ -184,6 +184,7 @@
   const ROSTER_KEY = "leave-roster-v2";
   const LOG_KEY = "leave-log-v1";
   const GRANT_KEY = "comp-grant-log-v1";
+  const RESIGN_KEY = "resignation-settlements-v1";
   let refreshTimer = null;
   let lastDateStr = null;
 
@@ -226,6 +227,7 @@
   function fullMonthsBetween(a, b) { let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()); if (b.getDate() < a.getDate()) months--; return Math.max(0, months); }
   function fullYearsBetween(a, b) { let years = b.getFullYear() - a.getFullYear(); const anniv = new Date(a.getFullYear() + years, a.getMonth(), a.getDate()); if (anniv > b) years--; return Math.max(0, years); }
   function round1(n) { return Math.round(n * 10) / 10; }
+  function roundUp(n) { return Math.ceil(n - 1e-9); } // 실제 지급/반영 값은 올림 처리 (산출 근거의 소수는 그대로 표기)
   function dateToStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
   // 시작일로부터 주말(토/일)을 제외하고 totalDays만큼 이어지는 날짜들을 구함 (예: 금요일 시작 2일 → 금, 월)
   function expandToBusinessDays(startStr, totalDays) {
@@ -247,6 +249,76 @@
     return result;
   }
   function annualFormula(serviceYears) { return Math.min(25, 15 + Math.floor((serviceYears - 1) / 2)); }
+
+  // ---- 퇴사자 연차 정산: 입사일 기준 vs 회계연도 기준 누적 발생량 비교 ----
+  function cumulativeAnniversary(hireDate, endDate) {
+    const detail = [];
+    const firstAnniv = addYears(hireDate, 1);
+    const firstYearEnd = endDate < firstAnniv ? endDate : firstAnniv;
+    const monthsInFirstYear = fullMonthsBetween(hireDate, firstYearEnd);
+    const firstYearMonthly = Math.min(11, monthsInFirstYear);
+    let total = firstYearMonthly;
+    detail.push({ label: "1년차 개근연차(월 1일, 최대 11일)", days: firstYearMonthly });
+    if (endDate <= firstAnniv) return { total: roundUp(total), detail, completedTotal: 0 };
+
+    // 매 기념일에 도달하는 즉시 그 시점의 정식 연차를 지급 (완성된 연차만 인정 — 법정 최소 기준)
+    let serviceYear = 1;
+    let cursor = firstAnniv;
+    while (cursor <= endDate) {
+      const grant = annualFormula(serviceYear);
+      total += grant;
+      detail.push({ label: `${serviceYear}주년(${fmt(cursor)}) 정식 지급`, days: grant });
+      serviceYear++;
+      cursor = addYears(hireDate, serviceYear);
+    }
+    // 마지막 미완성 구간(다음 기념일 전)은 아직 만 1년이 안 지났으므로 추가 지급 없음
+    const completedTotal = round1(detail.slice(0, -1).reduce((s, d) => s + d.days, 0));
+    return { total: roundUp(total), detail, completedTotal };
+  }
+  function cumulativeFiscal(hireDate, endDate) {
+    const detail = [];
+    const hireYear = hireDate.getFullYear();
+    const hireYearEnd = new Date(hireYear, 11, 31);
+    const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+    const nextJan1 = new Date(hireYear + 1, 0, 1);
+
+    if (endDate < nextJan1) {
+      // 아직 입사연도 안(첫 회계연도 전환 전): 월차만 인정, 비례연차는 미지급 상태
+      const monthsWorked = fullMonthsBetween(hireDate, endDate);
+      const monthlyLeave = Math.min(11, monthsWorked);
+      detail.push({ label: "입사연도 개근연차(월 1일, 최대 11일)", days: monthlyLeave });
+      return { total: roundUp(monthlyLeave), detail, completedTotal: 0 };
+    }
+
+    // 입사연도 비례연차: 15/365 비례가 최대 11일의 월차 기준을 항상 상회하므로,
+    // 월차를 별도로 더하지 않고 비례연차로 대체(중복 합산 방지)
+    const hireYearProrate = round1(15 * (daysInHireYear / 365));
+    let total = hireYearProrate;
+    detail.push({ label: `입사연도 비례연차(${fmt(nextJan1)} 지급 기준, ${daysInHireYear}일/365 — 월차 대체)`, days: hireYearProrate });
+
+    let year = hireYear + 1;
+    while (true) {
+      const jan1 = new Date(year, 0, 1);
+      const nextJan1b = new Date(year + 1, 0, 1);
+      const serviceYears = year - hireYear;
+      if (nextJan1b <= endDate) {
+        const grant = annualFormula(serviceYears);
+        total += grant;
+        detail.push({ label: `${year}.01.01 근속 ${serviceYears}년차 정식 지급`, days: grant });
+        year++;
+      } else {
+        const yearEnd = new Date(year, 11, 31);
+        const lastDay = endDate < yearEnd ? endDate : yearEnd;
+        const daysThisYear = daysBetween(jan1, lastDay) + 1;
+        const grant = round1(annualFormula(serviceYears) * (daysThisYear / 365));
+        total += grant;
+        detail.push({ label: `${year}.01.01 근속 ${serviceYears}년차, 퇴사연도 비례(${daysThisYear}일/365)`, days: grant });
+        break;
+      }
+    }
+    const completedTotal = round1(detail.slice(0, -1).reduce((s, d) => s + d.days, 0));
+    return { total: roundUp(total), detail, completedTotal };
+  }
   function todayLocalStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
   function escapeHtml(s) {
@@ -412,8 +484,34 @@
     const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
     const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
     const proRated = round1((15 * daysInHireYear) / 365);
-    return { statusKey: "c", statusLabel: "올해 1주년 도래", granted: round1(monthlyLeave + proRated), anniversary: anniversary1, proRated,
+    return { statusKey: "c", statusLabel: "올해 1주년 도래", granted: roundUp(monthlyLeave + proRated), anniversary: anniversary1, proRated,
       detail: `월차 ${monthlyLeave}일 + 비례연차 ${proRated}일(1주년 ${fmt(anniversary1)} 지급) · 내년 1/1부터 정식 편입` };
+  }
+
+  function computeResignSettlement(active) {
+    const hire = parseDate(active.hireDate);
+    const resign = parseDate(active.resignDate);
+    const methodA = cumulativeAnniversary(hire, resign);
+    const methodB = cumulativeFiscal(hire, resign);
+    const chosen = methodA.total >= methodB.total ? "A" : "B";
+    const grantedAnnual = Math.max(methodA.total, methodB.total);
+    const usageLog = active.usageLog || [];
+    const usedAnnual = round1(usageLog.filter((u) => u.type === "annual").reduce((s, u) => s + (Number(u.days) || 0), 0));
+    const usedComp = round1(usageLog.filter((u) => u.type === "comp").reduce((s, u) => s + (Number(u.days) || 0), 0));
+    const compGranted = Number(active.compGranted) || 0;
+    const remainingAnnual = round1(grantedAnnual - usedAnnual);
+    // 촉진 대상 자동 추정: "1·2차 촉구를 매년 적법하게 완료했다"는 가정 하에,
+    // 이미 만료된(완성된) 사이클의 발생분은 촉진 대상으로 보고, 퇴사일이 포함된 마지막(아직 미만료) 사이클은 제외
+    const chosenCompletedTotal = chosen === "A" ? methodA.completedTotal : methodB.completedTotal;
+    const autoPromoted = round1(Math.min(chosenCompletedTotal, remainingAnnual));
+    const promotedDays = active.promotedDaysOverride != null ? Number(active.promotedDaysOverride) : autoPromoted;
+    const payableAnnual = Math.max(0, round1(remainingAnnual - promotedDays));
+    return {
+      methodA, methodB, chosen, grantedAnnual,
+      usedAnnual, remainingAnnual,
+      autoPromoted, promotedDays, payableAnnual,
+      compGranted, usedComp, remainingComp: round1(compGranted - usedComp),
+    };
   }
 
   function render() {
@@ -423,11 +521,16 @@
     let roster = [];
     let leaveLog = [];
     let grantLog = [];
+    let resignations = [];
     let editingId = null;
     let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let currentPage = "home";
     let selectedStat = null;
     let docPreviewRows = null;
+    let resignActive = null; // 현재 작업 중인(아직 저장 전) 퇴사 정산 초안
+    let resignDocPreviewRows = null;
+    let resignDocParseError = null;
+    let resignDocRawText = null;
     let docParseError = null;
     let docStatusMessage = null;
     let docRawText = null;
@@ -438,6 +541,7 @@
         fbDb.ref("roster").on("value", (snap) => { roster = objToArr(snap.val()); paint(); });
         fbDb.ref("logs").on("value", (snap) => { leaveLog = objToArr(snap.val()); paint(); });
         fbDb.ref("grants").on("value", (snap) => { grantLog = objToArr(snap.val()); paint(); });
+        fbDb.ref("resignations").on("value", (snap) => { resignations = objToArr(snap.val()); paint(); });
 
         // 최초 1회: Firebase가 비어있고 이 브라우저에 기존 로컬 데이터가 있으면 업로드해서 이어받기
         fbDb.ref("roster").once("value").then((snap) => {
@@ -486,6 +590,10 @@
         grantLog = rawGrant ? JSON.parse(rawGrant) : [];
       } catch (e) { grantLog = []; }
       try {
+        const rawResign = localStorage.getItem(RESIGN_KEY);
+        resignations = rawResign ? JSON.parse(rawResign) : [];
+      } catch (e) { resignations = []; }
+      try {
         const rawV2 = localStorage.getItem(ROSTER_KEY);
         if (rawV2) {
           roster = JSON.parse(rawV2);
@@ -524,6 +632,10 @@
     async function saveGrant() {
       if (fbDb) { try { await fbDb.ref("grants").set(arrToObj(grantLog)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
       try { localStorage.setItem(GRANT_KEY, JSON.stringify(grantLog)); } catch (e) { console.error("저장 실패", e); }
+    }
+    async function saveResign() {
+      if (fbDb) { try { await fbDb.ref("resignations").set(arrToObj(resignations)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(RESIGN_KEY, JSON.stringify(resignations)); } catch (e) { console.error("저장 실패", e); }
     }
 
     function startAutoRefresh() {
@@ -656,7 +768,7 @@
       const upcomingHtml = upcoming.length
         ? upcoming.map((u) => `
           <div class="upcoming-item">
-            <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${fmt(u.anniversary)} 1주년 · 비례연차 ${u.proRated}일 예정</div></div>
+            <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${fmt(u.anniversary)} 1주년 · 비례연차 ${roundUp(u.proRated)}일 예정</div></div>
             <span class="dday ${u.dday <= 14 ? "urgent" : ""}">${u.dday === 0 ? "오늘" : "D-" + u.dday}</span>
           </div>`).join("")
         : `<div class="empty-mini">90일 이내 비례연차 지급 예정자가 없습니다.</div>`;
@@ -827,6 +939,63 @@
         </div>`;
       }
 
+      // 퇴사자 정산 계산 및 업로드 미리보기
+      const resignSettlement = resignActive ? computeResignSettlement(resignActive) : null;
+      const resignUsageHtml = resignActive && resignActive.usageLog.length
+        ? resignActive.usageLog.map((u, i) => `
+          <div class="log-item">
+            <div><span class="log-type ${u.type}">${u.type === "annual" ? "연차" : "대체휴가"}</span>${u.date} · ${u.days}일${u.reason ? ` · <span class="log-reason">${escapeHtml(u.reason)}</span>` : ""}</div>
+            <button class="resign-usage-del" data-idx="${i}">삭제</button>
+          </div>`).join("")
+        : `<div class="empty-mini">등록된 사용 내역이 없습니다.</div>`;
+
+      const resignRawTextViewer = resignDocRawText
+        ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:12px; color:var(--navy); font-weight:700;">🔍 인식된 원문 보기</summary>
+            <pre style="white-space:pre-wrap; font-size:11px; color:var(--gray); background:var(--cream); padding:10px; border-radius:8px; margin-top:8px; max-height:220px; overflow:auto;">${escapeHtml(resignDocRawText)}</pre>
+          </details>`
+        : "";
+      let resignDocPreviewHtml = "";
+      if (resignDocParseError) {
+        resignDocPreviewHtml = `<div class="empty-mini" style="color:var(--red); margin-top:10px;">⚠ ${escapeHtml(resignDocParseError)}</div>${resignRawTextViewer}`;
+      } else if (resignDocPreviewRows && resignDocPreviewRows.length) {
+        resignDocPreviewHtml = `
+        <div class="table-scroll" style="margin-top:12px;">
+          <table style="min-width:600px;">
+            <thead><tr><th>날짜</th><th>유형</th><th>일수</th><th>사유</th><th></th></tr></thead>
+            <tbody>
+              ${resignDocPreviewRows.map((r, i) => {
+                const [dy, dm, dd] = (r.date || "").split("-");
+                return `
+                <tr class="resign-doc-row" data-idx="${i}">
+                  <td>${dateGroupHtml("rdp-date", dy, dm, dd)}</td>
+                  <td><select class="rdp-type"><option value="annual" ${r.type === "annual" ? "selected" : ""}>연차</option><option value="comp" ${r.type === "comp" ? "selected" : ""}>대체휴가</option></select></td>
+                  <td><input type="number" class="rdp-days" min="0.5" step="0.5" value="${r.days}" style="width:64px;" /></td>
+                  <td><input type="text" class="rdp-reason" value="${escapeHtml(r.reason)}" style="width:140px;" /></td>
+                  <td><button class="rdp-remove" data-idx="${i}">제외</button></td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn secondary" id="resign-doc-confirm-btn" style="width:auto; margin-top:10px;">이 내역들 추가</button>
+        <button class="cancel-btn" id="resign-doc-discard-btn" style="padding:9px 14px; margin-top:10px;">취소</button>
+        <div style="margin-top:8px;">${resignRawTextViewer}</div>`;
+      }
+
+      const resignListHtml = resignations.length
+        ? resignations.map((r) => {
+            const s = computeResignSettlement(r);
+            return `
+          <div class="log-item" style="align-items:flex-start;">
+            <div>
+              <div class="name">${escapeHtml(r.name || "(이름없음)")}</div>
+              <div class="meta">${r.hireDate} ~ ${r.resignDate} · 발생 ${s.grantedAnnual}일(${s.chosen === "A" ? "입사일기준" : "회계연도기준"}) · 연차잔여 ${s.remainingAnnual}일(촉진면제 ${s.promotedDays}일 → 지급대상 ${s.payableAnnual}일) · 대체휴가잔여 ${s.remainingComp}일</div>
+            </div>
+            <button class="resign-del" data-id="${r.id}">삭제</button>
+          </div>`;
+          }).join("")
+        : `<div class="empty-mini">저장된 퇴사자 정산 내역이 없습니다.</div>`;
+
       const pages = {
         home: `
         <div class="stat-grid">
@@ -948,6 +1117,97 @@
             ${calCells}
           </div>
         </div>`,
+
+        resign: `
+        ${!resignActive ? `
+        <div class="card">
+          <h2>퇴사자 연차 정산</h2>
+          <p class="sub" style="margin-bottom:12px;">입사일·퇴사일을 입력하면 「입사일 기준」과 「회계연도 비례연차 기준」을 모두 계산해서, 근로자에게 더 유리한 쪽으로 자동 산정합니다.</p>
+          <div class="form-grid">
+            <div class="full"><label>이름</label><input id="resign-name" type="text" placeholder="예: OOO" /></div>
+            <div><label>입사일</label>${dateGroupHtml("resign-hire")}</div>
+            <div><label>퇴사일</label>${dateGroupHtml("resign-date")}</div>
+            <div class="full"><label>대체휴가 발생 개수(일)</label><input id="resign-comp" type="number" min="0" step="0.5" value="0" /></div>
+          </div>
+          <button class="btn" id="resign-start-btn">정산 시작</button>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h2>저장된 퇴사자 정산 내역</h2>
+          ${resignListHtml}
+        </div>
+        ` : `
+        <div class="card">
+          <h2>${escapeHtml(resignActive.name || "(이름없음)")} 님 연차 정산
+            <span class="count-badge">${resignActive.hireDate} ~ ${resignActive.resignDate}</span>
+          </h2>
+          <div class="grid-2" style="margin-top:4px;">
+            <div class="card" style="background:var(--cream); border:none;">
+              <h2 style="font-size:13px;">방법 A · 입사일(개인 기념일) 기준<span class="count-badge" style="margin-left:6px;">${resignSettlement.methodA.total}일</span></h2>
+              ${resignSettlement.methodA.detail.map((d) => `<div class="upcoming-item" style="padding:6px 0;"><div class="meta">${d.label}</div><span class="num" style="font-size:12.5px;">${d.days}일</span></div>`).join("")}
+            </div>
+            <div class="card" style="background:var(--cream); border:none;">
+              <h2 style="font-size:13px;">방법 B · 회계연도(1월 1일) 기준<span class="count-badge" style="margin-left:6px;">${resignSettlement.methodB.total}일</span></h2>
+              ${resignSettlement.methodB.detail.map((d) => `<div class="upcoming-item" style="padding:6px 0;"><div class="meta">${d.label}</div><span class="num" style="font-size:12.5px;">${d.days}일</span></div>`).join("")}
+            </div>
+          </div>
+          <div class="footnote" style="margin:14px 0 0; padding-top:10px; border-top:1px dashed var(--line);">
+            ✓ 채택된 방식: <b>${resignSettlement.chosen === "A" ? "방법 A (입사일 기준)" : "방법 B (회계연도 기준)"}</b> — 총 발생 연차 <b>${resignSettlement.grantedAnnual}일</b> (더 유리한 값 자동 선택)
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h2>사용 휴가 등록</h2>
+            <div class="form-grid">
+              <div><label>날짜</label>${dateGroupHtml("resign-log-date")}</div>
+              <div><label>유형</label><select id="resign-log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
+              <div><label>일수</label><input id="resign-log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="resign-log-reason" type="text" placeholder="예: 개인 사정" /></div>
+            </div>
+            <button class="btn secondary" id="resign-log-add-btn">사용 내역 추가</button>
+            <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:10px;">
+              <div class="summary-label" style="margin-bottom:8px;">전자결재 문서로 일괄 등록</div>
+              <input id="resign-doc-upload" type="file" accept=".pdf,.xlsx,.xls" />
+              <button class="btn secondary" id="resign-doc-parse-btn" style="margin-top:8px;">파일 분석하기</button>
+              ${resignDocPreviewHtml}
+            </div>
+          </div>
+          <div class="card">
+            <h2>사용 내역 목록</h2>
+            ${resignUsageHtml}
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h2>최종 정산 결과</h2>
+          <div class="stat-grid">
+            <div class="stat-card accent-b"><div class="n">${resignSettlement.grantedAnnual}일</div><div class="l">연차 발생(채택값)</div></div>
+            <div class="stat-card accent-a"><div class="n">${resignSettlement.usedAnnual}일</div><div class="l">연차 사용</div></div>
+            <div class="stat-card accent-total"><div class="n">${resignSettlement.remainingAnnual}일</div><div class="l">연차 잔여(촉진 반영 전)</div></div>
+            <div class="stat-card accent-c"><div class="n">${resignSettlement.remainingComp}일</div><div class="l">대체휴가 잔여</div></div>
+          </div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="full">
+              <label>연차 사용촉진 절차로 수당 면제된 일수 <span style="color:var(--gray); font-weight:400;">(자동 추정값 — 직접 수정 가능)</span></label>
+              <input id="resign-promoted" type="number" min="0" step="0.5" value="${resignSettlement.promotedDays}" />
+              <div class="dup-warning" style="color:var(--gray); font-style:italic;">자동 추정: ${resignSettlement.autoPromoted}일 (퇴사일이 포함된 마지막 사이클은 제외 · 1·2차 촉구를 매년 적법하게 완료했다고 가정)</div>
+            </div>
+          </div>
+          <div class="upcoming-item" style="background:var(--teal-bg); border-radius:8px; padding:12px 14px; margin-top:10px; border-bottom:none;">
+            <div>
+              <div class="name" style="color:var(--teal);">최종 연차수당 지급대상</div>
+              <div class="meta">잔여 ${resignSettlement.remainingAnnual}일 − 촉진 면제 ${resignSettlement.promotedDays}일 = 지급대상 <b>${resignSettlement.payableAnnual}일</b></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn" id="resign-save-btn" style="width:auto;">정산 완료 저장</button>
+            <button class="cancel-btn" id="resign-cancel-btn" style="padding:10px 16px;">취소</button>
+          </div>
+          <div class="footnote">
+            ※ 위 계산은 근로기준법 제60조 기준 및 회계연도 비례연차 산정 방식을 기반으로 한 추정치입니다. 연차 사용촉진(제61조) 촉진 면제 자동 추정값은 "매년 1·2차 촉구를 서면으로 기한 내 적법하게 완료했다"는 가정 하에, 퇴사일이 포함된 마지막(미만료) 사이클을 제외한 이전 사이클 발생분을 기준으로 계산했습니다. 실제로 특정 연도에 촉구를 빠뜨렸거나 절차가 미비했다면 그 해분은 제외하고 직접 수정해주세요. 실제 퇴직금·연차수당 정산 전 반드시 노무사 확인을 받으시기 바랍니다.
+          </div>
+        </div>
+        `}`,
       };
 
       const tabs = [
@@ -955,6 +1215,7 @@
         { key: "employees", label: "직원 관리" },
         { key: "leave", label: "휴가 등록" },
         { key: "calendar", label: "휴가 캘린더" },
+        { key: "resign", label: "퇴사자 정산" },
       ];
       const tabNavHtml = tabs.map((t) => `<button class="tab-btn ${currentPage === t.key ? "active" : ""}" data-page="${t.key}">${t.label}</button>`).join("");
 
@@ -1139,6 +1400,50 @@
         };
       });
 
+      // 미리보기 행의 직원/날짜를 수정할 때마다 중복 표시를 실시간으로 갱신
+      function getPreviewRowsLive() {
+        return Array.from(root.querySelectorAll(".doc-preview-row")).map((rowEl) => ({
+          rowEl,
+          empId: rowEl.querySelector(".dp-emp").value,
+          date: getDateGroupValue(rowEl.querySelector(".date-group.dp-date")),
+        }));
+      }
+      function flagDuplicates(rowsLive) {
+        const seen = {};
+        return rowsLive.map((r) => {
+          if (!r.empId || !r.date) return { ...r, isDup: false, dupReason: "" };
+          const key = r.empId + "|" + r.date;
+          const existsInLog = leaveLog.some((l) => l.empId === r.empId && l.date === r.date);
+          const dupInBatch = seen[key];
+          seen[key] = true;
+          if (existsInLog) return { ...r, isDup: true, dupReason: "⚠ 이미 등록된 날짜와 중복" };
+          if (dupInBatch) return { ...r, isDup: true, dupReason: "⚠ 업로드 파일 내에서 중복" };
+          return { ...r, isDup: false, dupReason: "" };
+        });
+      }
+      function recomputeDocDupWarnings() {
+        flagDuplicates(getPreviewRowsLive()).forEach(({ rowEl, isDup, dupReason }) => {
+          rowEl.classList.toggle("dup-row", isDup);
+          let warnEl = rowEl.querySelector(".dup-warning");
+          if (isDup) {
+            if (!warnEl) {
+              warnEl = document.createElement("div");
+              warnEl.className = "dup-warning";
+              rowEl.querySelector(".dp-emp").insertAdjacentElement("afterend", warnEl);
+            }
+            warnEl.textContent = dupReason;
+          } else if (warnEl) {
+            warnEl.remove();
+          }
+        });
+      }
+      root.querySelectorAll(".doc-preview-row").forEach((rowEl) => {
+        rowEl.querySelector(".dp-emp").addEventListener("change", recomputeDocDupWarnings);
+        rowEl.querySelectorAll(".date-group.dp-date input").forEach((inp) => {
+          inp.addEventListener("input", recomputeDocDupWarnings);
+        });
+      });
+
       const docConfirmBtn = document.getElementById("doc-confirm-btn");
       if (docConfirmBtn) docConfirmBtn.onclick = () => {
         const rowEls = root.querySelectorAll(".doc-preview-row");
@@ -1191,6 +1496,120 @@
         docStatusMessage = messages.length ? messages.join(" · ") : "등록된 항목이 없습니다.";
         paint();
       };
+
+      // ---- 퇴사자 정산 핸들러 ----
+      const resignStartBtn = document.getElementById("resign-start-btn");
+      if (resignStartBtn) resignStartBtn.onclick = () => {
+        const name = document.getElementById("resign-name").value.trim();
+        const hireDate = getDateGroupValue(root.querySelector(".date-group.resign-hire"));
+        const resignDate = getDateGroupValue(root.querySelector(".date-group.resign-date"));
+        const comp = Number(document.getElementById("resign-comp").value) || 0;
+        if (!hireDate) { root.querySelector(".date-group.resign-hire .dg-y").focus(); return; }
+        if (!resignDate) { root.querySelector(".date-group.resign-date .dg-y").focus(); return; }
+        if (parseDate(resignDate) <= parseDate(hireDate)) { alert("퇴사일은 입사일보다 이후여야 합니다."); return; }
+        resignActive = { name, hireDate, resignDate, compGranted: comp, promotedDaysOverride: null, usageLog: [] };
+        paint();
+      };
+
+      const resignLogAddBtn = document.getElementById("resign-log-add-btn");
+      if (resignLogAddBtn) resignLogAddBtn.onclick = () => {
+        const dateGroup = root.querySelector(".date-group.resign-log-date");
+        const date = getDateGroupValue(dateGroup);
+        const type = document.getElementById("resign-log-type").value;
+        const days = Number(document.getElementById("resign-log-days").value) || 0;
+        const reason = document.getElementById("resign-log-reason").value.trim();
+        if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
+        if (days <= 0) { alert("사용 일수를 입력해주세요."); return; }
+        resignActive.usageLog.push({ date, type, days, reason });
+        paint();
+      };
+
+      root.querySelectorAll(".resign-usage-del").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          resignActive.usageLog.splice(idx, 1);
+          paint();
+        };
+      });
+
+      const resignPromotedInput = document.getElementById("resign-promoted");
+      if (resignPromotedInput) resignPromotedInput.addEventListener("change", () => {
+        resignActive.promotedDaysOverride = Number(resignPromotedInput.value) || 0;
+        paint();
+      });
+
+      const resignDocParseBtn = document.getElementById("resign-doc-parse-btn");
+      if (resignDocParseBtn) resignDocParseBtn.onclick = async () => {
+        const fileInput = document.getElementById("resign-doc-upload");
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) { alert("파일을 먼저 선택해주세요."); return; }
+        resignDocParseError = null;
+        resignDocParseBtn.textContent = "분석 중…";
+        resignDocParseBtn.disabled = true;
+        try {
+          const isPdf = /\.pdf$/i.test(file.name);
+          const result = isPdf ? await parsePdfFile(file) : await parseExcelFile(file);
+          resignDocRawText = result.rawText;
+          const valid = result.rows.filter((r) => r.date);
+          if (!valid.length) {
+            resignDocParseError = "파일에서 날짜 정보를 인식하지 못했습니다. 아래 '인식된 원문 보기'를 확인해주세요.";
+            resignDocPreviewRows = null;
+          } else {
+            resignDocPreviewRows = valid;
+          }
+        } catch (e) {
+          console.error(e);
+          resignDocParseError = "파일을 분석하는 중 오류가 발생했습니다: " + e.message;
+          resignDocPreviewRows = null;
+        }
+        paint();
+      };
+
+      const resignDocDiscardBtn = document.getElementById("resign-doc-discard-btn");
+      if (resignDocDiscardBtn) resignDocDiscardBtn.onclick = () => { resignDocPreviewRows = null; resignDocParseError = null; resignDocRawText = null; paint(); };
+
+      root.querySelectorAll(".rdp-remove").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          resignDocPreviewRows.splice(idx, 1);
+          if (!resignDocPreviewRows.length) resignDocPreviewRows = null;
+          paint();
+        };
+      });
+
+      const resignDocConfirmBtn = document.getElementById("resign-doc-confirm-btn");
+      if (resignDocConfirmBtn) resignDocConfirmBtn.onclick = () => {
+        const rowEls = root.querySelectorAll(".resign-doc-row");
+        rowEls.forEach((rowEl) => {
+          const date = getDateGroupValue(rowEl.querySelector(".date-group.rdp-date"));
+          const type = rowEl.querySelector(".rdp-type").value;
+          const days = Number(rowEl.querySelector(".rdp-days").value) || 0;
+          const reason = rowEl.querySelector(".rdp-reason").value.trim();
+          if (date && days > 0) resignActive.usageLog.push({ date, type, days, reason });
+        });
+        resignDocPreviewRows = null;
+        paint();
+      };
+
+      const resignSaveBtn = document.getElementById("resign-save-btn");
+      if (resignSaveBtn) resignSaveBtn.onclick = () => {
+        resignations.push({ id: genId(), ...resignActive });
+        saveResign();
+        resignActive = null;
+        paint();
+      };
+      const resignCancelBtn = document.getElementById("resign-cancel-btn");
+      if (resignCancelBtn) resignCancelBtn.onclick = () => {
+        if (confirm("작성 중인 정산 내용이 사라집니다. 취소하시겠습니까?")) { resignActive = null; paint(); }
+      };
+      root.querySelectorAll(".resign-del").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          resignations = resignations.filter((r) => r.id !== id);
+          saveResign();
+          paint();
+        };
+      });
 
       root.querySelectorAll(".date-group").forEach(wireDateGroup);
     }
