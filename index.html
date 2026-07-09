@@ -472,7 +472,7 @@
       const hireYearEnd = new Date(hireYear, 11, 31);
       const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
       const proRated = round1((15 * daysInHireYear) / 365);
-      return { statusKey: "a", statusLabel: "입사연도(비례연차 대기)", granted: monthlyLeave, anniversary: nextJan1, proRated,
+      return { statusKey: "a", statusLabel: "입사연도(비례연차 대기)", granted: monthlyLeave, anniversary: nextJan1, proRated, justGrantedProrate: false,
         detail: `개근 가정 시 월차 ${monthlyLeave}일 발생(최대 11일) · 비례연차 ${proRated}일은 ${fmt(nextJan1)}에 지급 예정` };
     }
 
@@ -488,11 +488,12 @@
       const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
       const proRated = roundUp((15 * daysInHireYear) / 365);
       return { statusKey: "b", statusLabel: "정상 편입(비례연차 지급)", granted: proRated, anniversary: null, proRated: 0,
+        justGrantedProrate: true, grantedDate: jan1ThisYear,
         detail: `${fmt(jan1ThisYear)} 입사연도 비례연차 지급(재직 ${daysInHireYear}일/365 → 15일 중 비례, 월차 대체)` };
     }
     const serviceYears = yearsSinceHire - 1;
     const annual = annualFormula(Math.max(1, serviceYears));
-    return { statusKey: "b", statusLabel: "정상 편입", granted: annual, anniversary: null, proRated: 0,
+    return { statusKey: "b", statusLabel: "정상 편입", granted: annual, anniversary: null, proRated: 0, justGrantedProrate: false,
       detail: `${fmt(jan1ThisYear)} 기준 근속 ${serviceYears}년차 → 연차 ${annual}일 일괄 발생` };
   }
 
@@ -721,6 +722,17 @@
       const countA = computed.filter((c) => c.statusKey === "a").length;
       const countB = computed.filter((c) => c.statusKey === "b").length;
 
+      // 다음 1월 1일에 일괄 지급될 비례연차 합계 (입사연도 대기 중인 직원 전체)
+      const pendingList = computed.filter((c) => c.statusKey === "a");
+      const pendingCount = pendingList.length;
+      const pendingTotalDays = pendingList.reduce((s, c) => s + roundUp(c.proRated), 0);
+      const pendingNextJan1 = pendingList.length ? fmt(pendingList[0].anniversary) : "";
+
+      // 올해 1월 1일에 이미 지급된 비례연차 (전환연도에 해당하는 직원들)
+      const grantedList = computed.filter((c) => c.justGrantedProrate);
+      const grantedCount = grantedList.length;
+      const grantedDate = grantedList.length ? fmt(grantedList[0].grantedDate) : "";
+      const jan1ThisYearForHome = fmt(new Date(today.getFullYear(), 0, 1));
 
       const upcoming = computed
         .filter((c) => c.anniversary && c.anniversary >= today)
@@ -1011,10 +1023,6 @@
         </div>
         ${breakdownHtml}
         <div class="card">
-          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
-          ${upcomingHtml}
-        </div>
-        <div class="card">
           <h2>전체 현황 요약</h2>
           <div class="summary-block">
             <div class="summary-label">오늘 휴가 중</div>
@@ -1028,6 +1036,16 @@
             <div class="summary-label">최근 등록 내역 (사용·발생 통합)</div>
             ${recentActivityHtml}
           </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
+          ${upcomingHtml}
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span></h2>
+          ${grantedCount > 0
+            ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
+            : `<div class="empty-mini">올해 1월 1일에 비례연차를 지급받은 직원이 없습니다.</div>`}
         </div>`,
 
         employees: `
@@ -1039,6 +1057,19 @@
           </div>
           <button class="btn" id="add-btn">직원 추가</button>
         </div>
+        ${grantedCount > 0 ? `
+        <div class="card" style="margin-bottom:16px; background:var(--teal-bg); border:none;">
+          <h2 style="color:var(--teal);">${grantedDate} 지급된 비례연차 (전환연도) <span class="count-badge">${grantedCount}명</span></h2>
+          ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")}
+        </div>` : ""}
+        ${pendingCount > 0 ? `
+        <div class="card" style="margin-bottom:16px; background:var(--amber-bg); border:none;">
+          <h2 style="color:var(--amber);">다음 1월 1일(${pendingNextJan1}) 지급 예정 비례연차</h2>
+          <div class="stat-grid" style="margin-bottom:0;">
+            <div class="stat-card accent-a"><div class="n">${pendingCount}명</div><div class="l">비례연차 대기 중</div></div>
+            <div class="stat-card accent-a"><div class="n">${pendingTotalDays}일</div><div class="l">지급 예정 총 일수</div></div>
+          </div>
+        </div>` : ""}
         <div class="table-card">
           <div class="table-head">
             <h2 style="margin:0;">전체 직원 현황</h2>
