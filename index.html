@@ -1,0 +1,498 @@
+<div id="leave-app"></div>
+<style>
+#leave-app {
+  --navy: #1F3864;
+  --navy-deep: #142845;
+  --cream: #F7F5F0;
+  --paper: #FFFFFF;
+  --line: #E3DFD6;
+  --teal: #2F6F62;
+  --teal-bg: #E8F1EE;
+  --amber: #B5791F;
+  --amber-bg: #FAF0DF;
+  --violet: #5B3E9E;
+  --violet-bg: #EAE6F5;
+  --gray: #6B6B66;
+  --ink: #26241F;
+  --red: #B33B3B;
+  font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Pretendard", sans-serif;
+  color: var(--ink);
+  background: var(--cream);
+  padding: 26px 24px 40px;
+  border-radius: 14px;
+  max-width: 1100px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+#leave-app * { box-sizing: border-box; }
+#leave-app .top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+#leave-app .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--navy);
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+#leave-app h1 {
+  font-size: 25px;
+  margin: 0 0 4px;
+  color: var(--navy-deep);
+  letter-spacing: -0.01em;
+  font-weight: 800;
+}
+#leave-app .sub { color: var(--gray); font-size: 13.5px; margin: 0; line-height: 1.5; }
+#leave-app .today-box {
+  background: var(--navy);
+  color: white;
+  border-radius: 12px;
+  padding: 12px 18px;
+  text-align: right;
+  min-width: 200px;
+}
+#leave-app .today-box .label { font-size: 11px; opacity: 0.75; margin-bottom: 3px; }
+#leave-app .today-box .date { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#leave-app .today-box .live { font-size: 10.5px; opacity: 0.8; margin-top: 3px; }
+#leave-app .live-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: #6FE3A0; margin-right: 5px; animation: pulse 1.8s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+#leave-app .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+#leave-app .stat-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 16px;
+}
+#leave-app .stat-card .n { font-size: 26px; font-weight: 800; color: var(--navy-deep); font-variant-numeric: tabular-nums; }
+#leave-app .stat-card .l { font-size: 12px; color: var(--gray); margin-top: 2px; font-weight: 600; }
+#leave-app .stat-card.accent-a { border-top: 3px solid var(--amber); }
+#leave-app .stat-card.accent-b { border-top: 3px solid var(--teal); }
+#leave-app .stat-card.accent-c { border-top: 3px solid var(--violet); }
+#leave-app .stat-card.accent-total { border-top: 3px solid var(--navy); }
+
+#leave-app .grid-2 {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+  align-items: start;
+}
+#leave-app .card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+#leave-app .card h2 {
+  font-size: 14.5px;
+  margin: 0 0 12px;
+  color: var(--navy-deep);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#leave-app .upcoming-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+#leave-app .upcoming-item:last-child { border-bottom: none; }
+#leave-app .upcoming-item .name { font-weight: 700; color: var(--ink); }
+#leave-app .upcoming-item .meta { color: var(--gray); font-size: 11.5px; margin-top: 1px; }
+#leave-app .dday {
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--violet-bg);
+  color: var(--violet);
+  white-space: nowrap;
+}
+#leave-app .dday.urgent { background: var(--amber-bg); color: var(--amber); }
+#leave-app .empty-mini { color: var(--gray); font-size: 12.5px; padding: 10px 0; }
+
+#leave-app .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+#leave-app .form-grid .full { grid-column: 1 / -1; }
+#leave-app label { display: block; font-size: 12px; color: var(--gray); margin-bottom: 5px; font-weight: 600; }
+#leave-app input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--cream);
+  color: var(--ink);
+}
+#leave-app input:focus { outline: 2px solid var(--navy); outline-offset: 1px; background: var(--paper); }
+#leave-app .btn {
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
+}
+#leave-app .btn:hover { background: var(--navy-deep); }
+
+#leave-app .table-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+#leave-app .table-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px 0;
+}
+#leave-app table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 12px; }
+#leave-app th { text-align: left; background: var(--navy); color: white; padding: 10px 14px; font-weight: 700; font-size: 12px; }
+#leave-app td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+#leave-app tbody tr:hover { background: #FBFAF7; }
+#leave-app tr:last-child td { border-bottom: none; }
+#leave-app .status-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+#leave-app .status-a { background: var(--amber-bg); color: var(--amber); }
+#leave-app .status-b { background: var(--teal-bg); color: var(--teal); }
+#leave-app .status-c { background: var(--violet-bg); color: var(--violet); }
+#leave-app .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--navy-deep); }
+#leave-app .detail { color: var(--gray); font-size: 11.5px; line-height: 1.5; max-width: 250px; }
+#leave-app .del-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; font-weight: 700; padding: 4px 6px; }
+#leave-app .del-btn:hover { text-decoration: underline; }
+#leave-app .empty { text-align: center; color: var(--gray); padding: 34px 10px; font-size: 13.5px; }
+#leave-app .footnote {
+  margin: 16px 20px 20px;
+  font-size: 11.5px;
+  color: var(--gray);
+  line-height: 1.6;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+#leave-app .loading-msg { padding: 40px; text-align: center; color: var(--gray); font-size: 13px; }
+#leave-app .count-badge {
+  background: var(--cream); color: var(--navy-deep); font-size: 11.5px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line);
+}
+@media (max-width: 760px) {
+  #leave-app .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  #leave-app .grid-2 { grid-template-columns: 1fr; }
+  #leave-app .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script>
+(function () {
+  const KEY = "leave-roster-v1";
+  let refreshTimer = null;
+  let lastDateStr = null;
+
+  function parseDate(s) {
+    if (!s) return null;
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function fmt(d) {
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function fmtWeekday(d) {
+    const w = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+    return `${fmt(d)} (${w})`;
+  }
+  function addYears(d, n) { return new Date(d.getFullYear() + n, d.getMonth(), d.getDate()); }
+  function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+  function fullMonthsBetween(a, b) {
+    let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    if (b.getDate() < a.getDate()) months--;
+    return Math.max(0, months);
+  }
+  function fullYearsBetween(a, b) {
+    let years = b.getFullYear() - a.getFullYear();
+    const anniv = new Date(a.getFullYear() + years, a.getMonth(), a.getDate());
+    if (anniv > b) years--;
+    return Math.max(0, years);
+  }
+  function round1(n) { return Math.round(n * 10) / 10; }
+  function annualFormula(serviceYears) { return Math.min(25, 15 + Math.floor((serviceYears - 1) / 2)); }
+  function todayLocalStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function calcLeave(hireDate, baseDate) {
+    const anniversary1 = addYears(hireDate, 1);
+    const jan1ThisYear = new Date(baseDate.getFullYear(), 0, 1);
+
+    if (anniversary1 > baseDate) {
+      const monthsWorked = fullMonthsBetween(hireDate, baseDate);
+      const monthlyLeave = Math.min(11, monthsWorked);
+      const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
+      const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+      const proRated = round1((15 * daysInHireYear) / 365);
+      return {
+        statusKey: "a", statusLabel: "입사 1년 미만", granted: monthlyLeave,
+        anniversary: anniversary1, proRated,
+        detail: `개근 가정 시 월차 ${monthlyLeave}일 발생(최대 11일) · 비례연차 ${proRated}일은 1주년(${fmt(anniversary1)})에 지급 예정`,
+      };
+    }
+    if (anniversary1 <= jan1ThisYear) {
+      const serviceYears = fullYearsBetween(hireDate, jan1ThisYear);
+      const annual = annualFormula(Math.max(1, serviceYears));
+      return {
+        statusKey: "b", statusLabel: "정상 편입", granted: annual,
+        anniversary: null, proRated: 0,
+        detail: `${fmt(jan1ThisYear)} 기준 근속 ${serviceYears}년차 → 연차 ${annual}일 일괄 발생`,
+      };
+    }
+    const monthsWorked = fullMonthsBetween(hireDate, anniversary1);
+    const monthlyLeave = Math.min(11, monthsWorked);
+    const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
+    const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+    const proRated = round1((15 * daysInHireYear) / 365);
+    return {
+      statusKey: "c", statusLabel: "올해 1주년 도래", granted: round1(monthlyLeave + proRated),
+      anniversary: anniversary1, proRated,
+      detail: `월차 ${monthlyLeave}일 + 비례연차 ${proRated}일(1주년 ${fmt(anniversary1)} 지급) · 내년 1/1부터 정식 편입`,
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function render() {
+    const root = document.getElementById("leave-app");
+    root.innerHTML = `<div class="loading-msg">대시보드를 불러오는 중…</div>`;
+
+    let roster = [];
+
+    async function load() {
+      try {
+        const res = await window.storage.get(KEY, false);
+        roster = res ? JSON.parse(res.value) : [];
+      } catch (e) {
+        roster = [];
+      }
+      paint();
+      startAutoRefresh();
+    }
+
+    async function save() {
+      try {
+        await window.storage.set(KEY, JSON.stringify(roster), false);
+      } catch (e) {
+        console.error("저장 실패", e);
+      }
+    }
+
+    function startAutoRefresh() {
+      lastDateStr = todayLocalStr();
+      if (refreshTimer) clearInterval(refreshTimer);
+      // 1분마다 날짜가 바뀌었는지 체크 → 자정을 넘기면 자동으로 오늘 기준 재계산
+      refreshTimer = setInterval(() => {
+        const cur = todayLocalStr();
+        if (cur !== lastDateStr) {
+          lastDateStr = cur;
+          paint();
+        } else {
+          // 상단 시계/실시간 표시만 살짝 갱신
+          const clock = document.getElementById("live-clock");
+          if (clock) clock.textContent = fmtWeekday(new Date());
+        }
+      }, 60 * 1000);
+      // 탭이 다시 활성화될 때(예: 밤새 켜둔 뒤 아침에 복귀) 즉시 재계산
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          const cur = todayLocalStr();
+          if (cur !== lastDateStr) {
+            lastDateStr = cur;
+            paint();
+          }
+        }
+      });
+    }
+
+    function paint() {
+      const today = new Date();
+      const computed = roster
+        .map((r, idx) => {
+          const hireDate = parseDate(r.hireDate);
+          if (!hireDate) return null;
+          const result = calcLeave(hireDate, today);
+          const used = Number(r.used) || 0;
+          const remaining = round1(result.granted - used);
+          return { idx, name: r.name || "-", hireDate, used, remaining, ...result };
+        })
+        .filter(Boolean);
+
+      const countA = computed.filter((c) => c.statusKey === "a").length;
+      const countB = computed.filter((c) => c.statusKey === "b").length;
+      const countC = computed.filter((c) => c.statusKey === "c").length;
+
+      // 다가오는 비례연차 지급 예정 (1주년이 아직 안 지났고, 90일 이내인 사람)
+      const upcoming = computed
+        .filter((c) => c.anniversary && c.anniversary >= today)
+        .map((c) => ({ ...c, dday: daysBetween(today, c.anniversary) }))
+        .filter((c) => c.dday <= 90)
+        .sort((a, b) => a.dday - b.dday);
+
+      const rows = computed
+        .sort((a, b) => a.hireDate - b.hireDate)
+        .map((c) => `
+          <tr>
+            <td>${escapeHtml(c.name)}</td>
+            <td>${fmt(c.hireDate)}</td>
+            <td><span class="status-pill status-${c.statusKey}">${c.statusLabel}</span></td>
+            <td class="num">${c.granted}일</td>
+            <td class="num">${c.used}일</td>
+            <td class="num">${c.remaining}일</td>
+            <td class="detail">${c.detail}</td>
+            <td><button class="del-btn" data-idx="${c.idx}">삭제</button></td>
+          </tr>`)
+        .join("");
+
+      const upcomingHtml = upcoming.length
+        ? upcoming
+            .map(
+              (u) => `
+          <div class="upcoming-item">
+            <div>
+              <div class="name">${escapeHtml(u.name)}</div>
+              <div class="meta">${fmt(u.anniversary)} 1주년 · 비례연차 ${u.proRated}일 예정</div>
+            </div>
+            <span class="dday ${u.dday <= 14 ? "urgent" : ""}">${u.dday === 0 ? "오늘" : "D-" + u.dday}</span>
+          </div>`
+            )
+            .join("")
+        : `<div class="empty-mini">90일 이내 비례연차 지급 예정자가 없습니다.</div>`;
+
+      root.innerHTML = `
+        <div class="top-row">
+          <div>
+            <div class="eyebrow">HR AUTOMATION · 크림웨이브 인사운영팀</div>
+            <h1>연차 관리 대시보드</h1>
+            <p class="sub">회계연도(매년 1/1) 기준 연차 · 입사 1주년 비례연차 지급 방식을 자동 반영합니다.</p>
+          </div>
+          <div class="today-box">
+            <div class="label"><span class="live-dot"></span>오늘 기준 자동 계산</div>
+            <div class="date" id="live-clock">${fmtWeekday(today)}</div>
+            <div class="live">날짜가 바뀌면 자동으로 다시 계산됩니다</div>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card accent-total">
+            <div class="n">${computed.length}</div>
+            <div class="l">전체 등록 인원</div>
+          </div>
+          <div class="stat-card accent-a">
+            <div class="n">${countA}</div>
+            <div class="l">입사 1년 미만</div>
+          </div>
+          <div class="stat-card accent-b">
+            <div class="n">${countB}</div>
+            <div class="l">정상 편입</div>
+          </div>
+          <div class="stat-card accent-c">
+            <div class="n">${countC}</div>
+            <div class="l">올해 1주년 도래</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
+            ${upcomingHtml}
+          </div>
+          <div class="card">
+            <h2>직원 추가</h2>
+            <div class="form-grid">
+              <div class="full">
+                <label>이름</label>
+                <input id="in-name" type="text" placeholder="예: OOO" />
+              </div>
+              <div>
+                <label>입사일</label>
+                <input id="in-hire" type="date" />
+              </div>
+              <div>
+                <label>사용한 연차(일)</label>
+                <input id="in-used" type="number" min="0" step="0.5" value="0" />
+              </div>
+            </div>
+            <button class="btn" id="add-btn">직원 추가</button>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-head">
+            <h2 style="margin:0;">전체 직원 현황</h2>
+            <span class="count-badge">총 ${computed.length}명</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>이름</th><th>입사일</th><th>상태</th><th>올해 발생연차</th>
+                <th>사용</th><th>잔여</th><th>산출 근거</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || `<tr><td colspan="8" class="empty">등록된 직원이 없습니다. 오른쪽 위 폼에서 입사일을 입력하고 추가해보세요.</td></tr>`}
+            </tbody>
+          </table>
+          <div class="footnote">
+            ※ 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 사내 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
+            비례연차는 365일 기준으로 단순 안분 계산했으며, 육아휴직·무급휴직 등 근속기간 산입 제외 사유, 개근 여부는 반영되어 있지 않습니다.
+            모든 날짜 계산은 이 화면을 보는 시점의 실제 오늘 날짜를 기준으로 자동 갱신되며, 최종 지급 연차일수는 인사운영팀 확인이 필요합니다.
+          </div>
+        </div>
+      `;
+
+      document.getElementById("add-btn").onclick = () => {
+        const name = document.getElementById("in-name").value.trim();
+        const hire = document.getElementById("in-hire").value;
+        const used = document.getElementById("in-used").value;
+        if (!hire) {
+          document.getElementById("in-hire").focus();
+          return;
+        }
+        roster.push({ name, hireDate: hire, used });
+        save();
+        paint();
+      };
+
+      root.querySelectorAll(".del-btn").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          roster.splice(idx, 1);
+          save();
+          paint();
+        };
+      });
+    }
+
+    load();
+  }
+
+  render();
+})();
+</script>
