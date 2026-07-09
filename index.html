@@ -254,15 +254,34 @@
   function guessTypeFromText(text) {
     return /대체\s*휴가|대체휴가/.test(text) ? "comp" : "annual";
   }
+  function extractDateNearLabel(flat) {
+    // 요일이 붙은 모든 날짜(YYYY-MM-DD(요일))를 찾아, 각 날짜 앞쪽 문맥을 함께 수집
+    const dateRe = /(\d{4}-\d{2}-\d{2})\s*\([일월화수목금토]\)/g;
+    const candidates = [];
+    let m;
+    while ((m = dateRe.exec(flat)) !== null) {
+      const context = flat.slice(Math.max(0, m.index - 15), m.index);
+      candidates.push({ date: m[1], context });
+    }
+    if (!candidates.length) {
+      const plain = flat.match(/휴가신청일\s*(\d{4}-\d{2}-\d{2})/);
+      return plain ? plain[1] : "";
+    }
+    // "신청일"이라는 단어와 가장 가까운 날짜를 우선 채택 (기안일 날짜는 제외)
+    const preferred = candidates.find((c) => /신청일/.test(c.context));
+    const notGian = candidates.find((c) => !/기안일/.test(c.context));
+    const chosen = preferred || notGian || candidates[0];
+    return chosen.date;
+  }
   function extractFieldsFromText(text) {
     const flat = text.replace(/\s+/g, " ");
     const nameMatch = flat.match(/기안자\s*([가-힣]{2,4})/);
-    const dateMatch = flat.match(/휴가신청일\s*(\d{4}-\d{2}-\d{2})/) || flat.match(/(\d{4}-\d{2}-\d{2})\s*\([일월화수목금토]\)/);
+    const dateMatch = extractDateNearLabel(flat);
     const daysMatch = flat.match(/신청\s*휴가수\s*([\d.]+)\s*d/i);
     const reasonMatch = flat.match(/([가-힣][가-힣\s]{5,80})$/) || flat.match(/신청사유[^가-힣]*([가-힣][^d]{2,60}?)(?:연차|대체휴가|휴가신청일|보유휴가|$)/);
     return {
       name: nameMatch ? nameMatch[1] : "",
-      date: dateMatch ? dateMatch[1] : "",
+      date: dateMatch || "",
       days: daysMatch ? Number(daysMatch[1]) : 1,
       reason: reasonMatch ? reasonMatch[1].trim() : "",
       type: guessTypeFromText(flat),
