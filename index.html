@@ -41,6 +41,19 @@
 #leave-app h1 { font-size: 25px; margin: 0 0 4px; color: var(--navy-deep); letter-spacing: -0.01em; font-weight: 800; }
 #leave-app .sub { color: var(--gray); font-size: 13.5px; margin: 0; line-height: 1.5; }
 #leave-app .top-right { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+#leave-app .tab-nav { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+#leave-app .tab-btn {
+  background: none; border: none; cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--gray);
+  padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+#leave-app .tab-btn:hover { color: var(--navy-deep); }
+#leave-app .tab-btn.active { color: var(--navy-deep); border-bottom: 2px solid var(--navy); }
+#leave-app .page > .card,
+#leave-app .page > .stat-grid,
+#leave-app .page > .grid-2,
+#leave-app .page > .table-card,
+#leave-app .page > .cal-card { margin-bottom: 16px; }
+#leave-app .page > *:last-child { margin-bottom: 0; }
 #leave-app .sync-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
 #leave-app .sync-badge.on { background: var(--teal-bg); color: var(--teal); }
 #leave-app .sync-badge.off { background: var(--line); color: var(--gray); }
@@ -266,6 +279,7 @@
     let leaveLog = [];
     let editingId = null;
     let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    let currentPage = "home";
 
     async function load() {
       if (fbDb) {
@@ -482,6 +496,96 @@
         calCells += `<div class="cal-cell ${dStr === todayStr ? "today" : ""}"><div class="cal-daynum">${day}</div>${chips}${more}</div>`;
       }
 
+      const pages = {
+        home: `
+        <div class="stat-grid">
+          <div class="stat-card accent-total"><div class="n">${computed.length}</div><div class="l">전체 등록 인원</div></div>
+          <div class="stat-card accent-a"><div class="n">${countA}</div><div class="l">입사 1년 미만</div></div>
+          <div class="stat-card accent-b"><div class="n">${countB}</div><div class="l">정상 편입</div></div>
+          <div class="stat-card accent-c"><div class="n">${countC}</div><div class="l">올해 1주년 도래</div></div>
+          <div class="stat-card accent-comp"><div class="n">${compGrantedTotal}일</div><div class="l">대체휴가 발생(합계)</div></div>
+          <div class="stat-card accent-comp"><div class="n">${compRemainingTotal}일</div><div class="l">대체휴가 잔여(합계)</div></div>
+        </div>
+        <div class="card">
+          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
+          ${upcomingHtml}
+        </div>`,
+
+        employees: `
+        <div class="card" style="margin-bottom:16px;">
+          <h2>직원 추가</h2>
+          <div class="form-grid">
+            <div class="full"><label>이름</label><input id="in-name" type="text" placeholder="예: OOO" /></div>
+            <div><label>입사일</label>${dateGroupHtml("in-hire")}</div>
+            <div><label>대체휴가 발생(일)</label><input id="in-comp" type="number" min="0" step="0.5" value="0" /></div>
+          </div>
+          <button class="btn" id="add-btn">직원 추가</button>
+        </div>
+        <div class="table-card">
+          <div class="table-head">
+            <h2 style="margin:0;">전체 직원 현황</h2>
+            <span class="count-badge">총 ${computed.length}명</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr>
+                <th>이름</th><th>입사일</th><th>상태</th><th>연차발생</th><th>연차사용</th><th>연차잔여</th>
+                <th>대체발생</th><th>대체사용</th><th>대체잔여</th><th>산출 근거</th><th></th>
+              </tr></thead>
+              <tbody>${rows || `<tr><td colspan="11" class="empty">등록된 직원이 없습니다.</td></tr>`}</tbody>
+            </table>
+          </div>
+          <div class="footnote">
+            ※ 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 사내 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
+            연차·대체휴가 사용일수는 "휴가 등록" 탭에 입력한 내역의 합계로 자동 계산됩니다. 육아휴직·무급휴직 등 근속기간 산입 제외 사유는 반영되어 있지 않습니다.
+            최종 지급 연차일수는 인사운영팀 확인이 필요합니다.
+          </div>
+        </div>`,
+
+        leave: `
+        <div class="grid-2">
+          <div class="card">
+            <h2>휴가 사용 등록</h2>
+            <div class="form-grid">
+              <div class="full"><label>직원</label><select id="log-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
+              <div><label>날짜</label>${dateGroupHtml("log-date")}</div>
+              <div><label>유형</label><select id="log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
+              <div class="full"><label>사용 일수</label><input id="log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+            </div>
+            <button class="btn secondary" id="log-add-btn">휴가 등록</button>
+          </div>
+          <div class="card">
+            <h2>최근 휴가 사용 내역</h2>
+            ${logsHtml}
+          </div>
+        </div>`,
+
+        calendar: `
+        <div class="cal-card" style="margin-bottom:0;">
+          <div class="cal-head">
+            <h2 style="margin:0;">휴가 캘린더</h2>
+            <div class="cal-nav">
+              <button id="cal-prev">‹</button>
+              <div class="cal-title">${y}년 ${m + 1}월</div>
+              <button id="cal-next">›</button>
+            </div>
+          </div>
+          <div class="cal-grid">
+            <div class="cal-dow">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div>
+            <div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow">토</div>
+            ${calCells}
+          </div>
+        </div>`,
+      };
+
+      const tabs = [
+        { key: "home", label: "대시보드" },
+        { key: "employees", label: "직원 관리" },
+        { key: "leave", label: "휴가 등록" },
+        { key: "calendar", label: "휴가 캘린더" },
+      ];
+      const tabNavHtml = tabs.map((t) => `<button class="tab-btn ${currentPage === t.key ? "active" : ""}" data-page="${t.key}">${t.label}</button>`).join("");
+
       root.innerHTML = `
         <div class="top-row">
           <div>
@@ -500,89 +604,15 @@
           </div>
         </div>
 
-        <div class="stat-grid">
-          <div class="stat-card accent-total"><div class="n">${computed.length}</div><div class="l">전체 등록 인원</div></div>
-          <div class="stat-card accent-a"><div class="n">${countA}</div><div class="l">입사 1년 미만</div></div>
-          <div class="stat-card accent-b"><div class="n">${countB}</div><div class="l">정상 편입</div></div>
-          <div class="stat-card accent-c"><div class="n">${countC}</div><div class="l">올해 1주년 도래</div></div>
-          <div class="stat-card accent-comp"><div class="n">${compGrantedTotal}일</div><div class="l">대체휴가 발생(합계)</div></div>
-          <div class="stat-card accent-comp"><div class="n">${compRemainingTotal}일</div><div class="l">대체휴가 잔여(합계)</div></div>
-        </div>
+        <div class="tab-nav">${tabNavHtml}</div>
 
-        <div class="grid-2">
-          <div class="card">
-            <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
-            ${upcomingHtml}
-          </div>
-          <div class="card">
-            <h2>직원 추가</h2>
-            <div class="form-grid">
-              <div class="full"><label>이름</label><input id="in-name" type="text" placeholder="예: OOO" /></div>
-              <div><label>입사일</label>${dateGroupHtml("in-hire")}</div>
-              <div><label>대체휴가 발생(일)</label><input id="in-comp" type="number" min="0" step="0.5" value="0" /></div>
-            </div>
-            <button class="btn" id="add-btn">직원 추가</button>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <div class="card">
-            <h2>휴가 사용 등록</h2>
-            <div class="form-grid">
-              <div class="full"><label>직원</label><select id="log-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
-              <div><label>날짜</label>${dateGroupHtml("log-date")}</div>
-              <div><label>유형</label><select id="log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
-              <div class="full"><label>사용 일수</label><input id="log-days" type="number" min="0.5" step="0.5" value="1" /></div>
-            </div>
-            <button class="btn secondary" id="log-add-btn">휴가 등록</button>
-          </div>
-          <div class="card">
-            <h2>최근 휴가 사용 내역</h2>
-            ${logsHtml}
-          </div>
-        </div>
-
-        <div class="cal-card">
-          <div class="cal-head">
-            <h2 style="margin:0;">휴가 캘린더</h2>
-            <div class="cal-nav">
-              <button id="cal-prev">‹</button>
-              <div class="cal-title">${y}년 ${m + 1}월</div>
-              <button id="cal-next">›</button>
-            </div>
-          </div>
-          <div class="cal-grid">
-            <div class="cal-dow">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div>
-            <div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow">토</div>
-            ${calCells}
-          </div>
-        </div>
-
-        <div class="table-card">
-          <div class="table-head">
-            <h2 style="margin:0;">전체 직원 현황</h2>
-            <span class="count-badge">총 ${computed.length}명</span>
-          </div>
-          <div class="table-scroll">
-            <table>
-              <thead><tr>
-                <th>이름</th><th>입사일</th><th>상태</th><th>연차발생</th><th>연차사용</th><th>연차잔여</th>
-                <th>대체발생</th><th>대체사용</th><th>대체잔여</th><th>산출 근거</th><th></th>
-              </tr></thead>
-              <tbody>${rows || `<tr><td colspan="11" class="empty">등록된 직원이 없습니다.</td></tr>`}</tbody>
-            </table>
-          </div>
-          <div class="footnote">
-            ※ 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 사내 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
-            연차·대체휴가 사용일수는 "휴가 사용 등록"에 입력한 내역의 합계로 자동 계산됩니다. 육아휴직·무급휴직 등 근속기간 산입 제외 사유는 반영되어 있지 않습니다.
-            모든 데이터는 이 브라우저에만 저장되며, 최종 지급 연차일수는 인사운영팀 확인이 필요합니다.
-          </div>
-        </div>
+        <div class="page">${pages[currentPage] || pages.home}</div>
       `;
 
       document.getElementById("xlsx-btn").onclick = exportExcel;
 
-      document.getElementById("add-btn").onclick = () => {
+      const addBtn = document.getElementById("add-btn");
+      if (addBtn) addBtn.onclick = () => {
         const name = document.getElementById("in-name").value.trim();
         const hireGroup = root.querySelector(".date-group.in-hire");
         const hire = getDateGroupValue(hireGroup);
@@ -593,7 +623,8 @@
         paint();
       };
 
-      document.getElementById("log-add-btn").onclick = () => {
+      const logAddBtn = document.getElementById("log-add-btn");
+      if (logAddBtn) logAddBtn.onclick = () => {
         const empId = document.getElementById("log-emp").value;
         const dateGroup = root.querySelector(".date-group.log-date");
         const date = getDateGroupValue(dateGroup);
@@ -643,8 +674,14 @@
         };
       });
 
-      document.getElementById("cal-prev").onclick = () => { calMonth = new Date(y, m - 1, 1); paint(); };
-      document.getElementById("cal-next").onclick = () => { calMonth = new Date(y, m + 1, 1); paint(); };
+      const calPrevBtn = document.getElementById("cal-prev");
+      const calNextBtn = document.getElementById("cal-next");
+      if (calPrevBtn) calPrevBtn.onclick = () => { calMonth = new Date(y, m - 1, 1); paint(); };
+      if (calNextBtn) calNextBtn.onclick = () => { calMonth = new Date(y, m + 1, 1); paint(); };
+
+      root.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.onclick = () => { currentPage = btn.getAttribute("data-page"); paint(); };
+      });
 
       root.querySelectorAll(".date-group").forEach(wireDateGroup);
     }
