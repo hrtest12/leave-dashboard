@@ -165,6 +165,9 @@
 #leave-app .editing-row { background: #FBF8EF; }
 #leave-app .editing-row input { padding: 6px 8px; font-size: 13px; }
 #leave-app .empty { text-align: center; color: var(--gray); padding: 34px 10px; font-size: 13.5px; }
+#leave-app .dup-row { background: #FDECEC !important; }
+#leave-app .dup-row:hover { background: #FBDFDF !important; }
+#leave-app .dup-warning { font-size: 10.5px; color: var(--red); font-weight: 700; margin-top: 3px; }
 #leave-app .footnote { margin: 16px 20px 20px; font-size: 11.5px; color: var(--gray); line-height: 1.6; border-top: 1px dashed var(--line); padding-top: 12px; }
 #leave-app .loading-msg { padding: 40px; text-align: center; color: var(--gray); font-size: 13px; }
 #leave-app .count-badge { background: var(--cream); color: var(--navy-deep); font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
@@ -426,6 +429,7 @@
     let selectedStat = null;
     let docPreviewRows = null;
     let docParseError = null;
+    let docStatusMessage = null;
     let docRawText = null;
 
     async function load() {
@@ -775,21 +779,32 @@
       let docPreviewHtml = "";
       if (docParseError) {
         docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--red);">⚠ ${escapeHtml(docParseError)}</div>${rawTextViewer}</div>`;
+      } else if (docStatusMessage) {
+        docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--teal); font-weight:700;">✓ ${escapeHtml(docStatusMessage)}</div></div>`;
       } else if (docPreviewRows && docPreviewRows.length) {
+        const seenInBatch = {};
         docPreviewHtml = `
         <div class="card" style="margin-bottom:16px;">
           <h2>업로드 내용 확인 <span class="count-badge">${docPreviewRows.length}건 인식됨</span></h2>
           <div class="table-scroll">
-            <table style="min-width:760px;">
+            <table style="min-width:800px;">
               <thead><tr><th>직원</th><th>날짜</th><th>유형</th><th>일수</th><th>사유</th><th></th></tr></thead>
               <tbody>
                 ${docPreviewRows.map((r, i) => {
                   const matched = roster.find((emp) => emp.name === r.name);
                   const [dy, dm, dd] = (r.date || "").split("-");
+                  const empId = matched ? matched.id : "";
+                  const dupKey = empId + "|" + r.date;
+                  const existsInLog = empId && leaveLog.some((l) => l.empId === empId && l.date === r.date);
+                  const dupInBatch = empId && seenInBatch[dupKey];
+                  if (empId) seenInBatch[dupKey] = true;
+                  const isDup = existsInLog || dupInBatch;
+                  const warnText = existsInLog ? "⚠ 이미 등록된 날짜와 중복" : dupInBatch ? "⚠ 업로드 파일 내에서 중복" : "";
                   return `
-                  <tr class="doc-preview-row" data-idx="${i}">
+                  <tr class="doc-preview-row ${isDup ? "dup-row" : ""}" data-idx="${i}">
                     <td>
                       <select class="dp-emp">${empOptionsWithSelected(matched ? matched.id : "", r.name)}</select>
+                      ${warnText ? `<div class="dup-warning">${warnText}</div>` : ""}
                     </td>
                     <td>${dateGroupHtml("dp-date", dy, dm, dd)}</td>
                     <td><select class="dp-type"><option value="annual" ${r.type === "annual" ? "selected" : ""}>연차</option><option value="comp" ${r.type === "comp" ? "selected" : ""}>대체휴가</option></select></td>
@@ -990,6 +1005,16 @@
         if (!empId) { alert("직원을 선택해주세요."); return; }
         if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
         if (days <= 0) { alert("사용 일수를 입력해주세요."); return; }
+        const dup = leaveLog.find((l) => l.empId === empId && l.date === date);
+        if (dup) {
+          const empName = (roster.find((r) => r.id === empId) || {}).name || "해당 직원";
+          const ok = confirm(
+            `⚠ 중복 등록 경고\n\n${empName}님은 ${date}에 이미 ${dup.type === "annual" ? "연차" : "대체휴가"} ${dup.days}일이 등록되어 있습니다.\n` +
+            `그대로 추가하면 같은 날짜에 두 건이 쌓여 잔여 연차가 이중으로 차감됩니다.\n\n` +
+            `정말 추가로 등록하시겠습니까? ("취소"를 누르면 등록되지 않습니다)`
+          );
+          if (!ok) return;
+        }
         leaveLog.push({ id: genId(), empId, date, type, days, reason });
         saveLog();
         paint();
@@ -1079,7 +1104,7 @@
         const fileInput = document.getElementById("doc-upload");
         const file = fileInput.files && fileInput.files[0];
         if (!file) { alert("파일을 먼저 선택해주세요."); return; }
-        docParseError = null;
+        docParseError = null; docStatusMessage = null;
         docParseBtn.textContent = "분석 중…";
         docParseBtn.disabled = true;
         try {
@@ -1103,7 +1128,7 @@
       };
 
       const docDiscardBtn = document.getElementById("doc-discard-btn");
-      if (docDiscardBtn) docDiscardBtn.onclick = () => { docPreviewRows = null; docParseError = null; paint(); };
+      if (docDiscardBtn) docDiscardBtn.onclick = () => { docPreviewRows = null; docParseError = null; docStatusMessage = null; paint(); };
 
       root.querySelectorAll(".dp-remove").forEach((btn) => {
         btn.onclick = () => {
@@ -1117,21 +1142,53 @@
       const docConfirmBtn = document.getElementById("doc-confirm-btn");
       if (docConfirmBtn) docConfirmBtn.onclick = () => {
         const rowEls = root.querySelectorAll(".doc-preview-row");
-        let addedCount = 0;
+        // 1) 현재 화면에 입력된 값 기준으로 등록 후보를 모두 수집
+        const candidates = [];
         rowEls.forEach((rowEl) => {
           const empId = rowEl.querySelector(".dp-emp").value;
           const date = getDateGroupValue(rowEl.querySelector(".date-group.dp-date"));
           const type = rowEl.querySelector(".dp-type").value;
           const days = Number(rowEl.querySelector(".dp-days").value) || 0;
           const reason = rowEl.querySelector(".dp-reason").value.trim();
-          if (empId && date && days > 0) {
-            leaveLog.push({ id: genId(), empId, date, type, days, reason });
-            addedCount++;
+          if (empId && date && days > 0) candidates.push({ empId, date, type, days, reason });
+        });
+        const skippedNoEmp = rowEls.length - candidates.length;
+
+        // 2) 기존 등록 내역 및 업로드 항목 내부의 중복(동일 직원+동일 날짜)을 판별
+        const seen = {};
+        const toAdd = [];
+        let dupCount = 0;
+        candidates.forEach((c) => {
+          const key = c.empId + "|" + c.date;
+          const existsInLog = leaveLog.some((l) => l.empId === c.empId && l.date === c.date);
+          const dupInBatch = seen[key];
+          seen[key] = true;
+          if (existsInLog || dupInBatch) {
+            dupCount++;
+          } else {
+            toAdd.push(c);
           }
         });
-        if (addedCount) { saveLog(); }
+
+        // 3) 중복이 있으면 팝업으로 안내하고, 확인 시 중복분만 제외하고 등록
+        if (dupCount > 0) {
+          const proceed = confirm(
+            `⚠ 중복 등록 경고\n\n${dupCount}건이 이미 등록된 날짜(또는 업로드 파일 내에서 같은 직원·같은 날짜)와 중복됩니다.\n` +
+            `중복된 항목은 표에서 빨간색으로 표시되어 있습니다.\n\n` +
+            `중복 항목을 제외하고 나머지 ${toAdd.length}건만 등록할까요?\n("취소"를 누르면 아무것도 등록되지 않으니, 표에서 직접 수정 후 다시 시도해주세요)`
+          );
+          if (!proceed) return;
+        }
+
+        toAdd.forEach((c) => leaveLog.push({ id: genId(), ...c }));
+        if (toAdd.length) saveLog();
+
         docPreviewRows = null;
-        docParseError = addedCount < rowEls.length ? `${addedCount}건 등록됨 (직원이 지정되지 않은 나머지 항목은 제외되었습니다)` : null;
+        const messages = [];
+        if (toAdd.length) messages.push(`${toAdd.length}건 등록됨`);
+        if (dupCount) messages.push(`중복 ${dupCount}건 제외`);
+        if (skippedNoEmp) messages.push(`직원 미지정 ${skippedNoEmp}건 제외`);
+        docStatusMessage = messages.length ? messages.join(" · ") : "등록된 항목이 없습니다.";
         paint();
       };
 
