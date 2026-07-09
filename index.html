@@ -80,8 +80,8 @@
 #leave-app .breakdown-card h2 { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 #leave-app .breakdown-close { background: none; border: none; color: var(--gray); cursor: pointer; font-size: 12px; font-weight: 700; margin-left: auto; }
 #leave-app .breakdown-close:hover { color: var(--red); }
-#leave-app .summary-block { margin-bottom: 16px; }
-#leave-app .summary-block:last-child { margin-bottom: 0; }
+#leave-app .summary-block { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px dashed var(--line); }
+#leave-app .summary-block:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 #leave-app .summary-label { font-size: 12px; font-weight: 700; color: var(--navy); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
 
 #leave-app .grid-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
@@ -871,10 +871,24 @@
           }).join("")
         : `<div class="empty-mini">앞으로 7일 이내 예정된 휴가가 없습니다.</div>`;
 
-      const recentActivityHtml = recentActivity.length
-        ? recentActivity.map((item) => {
-            const emp = roster.find((r) => r.id === item.empId);
-            return `<div class="log-item"><div><span class="log-type ${kindClass[item.kind]}">${kindLabel[item.kind]}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${item.date} · ${item.days}일${item.reason ? ` · <span class="log-reason">${escapeHtml(item.reason)}</span>` : ""}</div></div>`;
+      // 날짜별로 그룹화 (같은 날짜에 여러 명이면 "날짜 · N명"으로 묶어서 표시)
+      const recentByDate = {};
+      recentActivity.forEach((item) => {
+        (recentByDate[item.date] = recentByDate[item.date] || []).push(item);
+      });
+      const recentDates = Object.keys(recentByDate).sort((a, b) => (a < b ? 1 : -1));
+
+      const recentActivityHtml = recentDates.length
+        ? recentDates.map((date) => {
+            const items = recentByDate[date];
+            const rows = items.map((item) => {
+              const emp = roster.find((r) => r.id === item.empId);
+              return `<div class="log-item" style="padding-left:10px;"><div><span class="log-type ${kindClass[item.kind]}">${kindLabel[item.kind]}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${item.days}일${item.reason ? ` · <span class="log-reason">${escapeHtml(item.reason)}</span>` : ""}</div></div>`;
+            }).join("");
+            return `<div style="margin-bottom:10px;">
+              <div style="font-size:12px; font-weight:700; color:var(--navy); margin-bottom:4px;">${date} <span class="count-badge" style="margin-left:4px;">${items.length}명</span></div>
+              ${rows}
+            </div>`;
           }).join("")
         : `<div class="empty-mini">등록된 활동 내역이 없습니다.</div>`;
 
@@ -1038,14 +1052,14 @@
           </div>
         </div>
         <div class="card" style="margin-top:16px;">
-          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
-          ${upcomingHtml}
-        </div>
-        <div class="card" style="margin-top:16px;">
           <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span></h2>
           ${grantedCount > 0
             ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
             : `<div class="empty-mini">올해 1월 1일에 비례연차를 지급받은 직원이 없습니다.</div>`}
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
+          ${upcomingHtml}
         </div>`,
 
         employees: `
