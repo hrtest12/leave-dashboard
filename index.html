@@ -111,6 +111,9 @@
 #leave-app .log-type.comp { background: var(--violet-bg); color: var(--violet); }
 #leave-app .log-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 11.5px; font-weight: 700; }
 #leave-app .log-del:hover { text-decoration: underline; }
+#leave-app .grant-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 11.5px; font-weight: 700; }
+#leave-app .grant-del:hover { text-decoration: underline; }
+#leave-app .log-reason { color: var(--gray); font-style: italic; }
 
 #leave-app .cal-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; }
 #leave-app .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -169,6 +172,7 @@
   const ROSTER_KEY_V1 = "leave-roster-v1";
   const ROSTER_KEY = "leave-roster-v2";
   const LOG_KEY = "leave-log-v1";
+  const GRANT_KEY = "comp-grant-log-v1";
   let refreshTimer = null;
   let lastDateStr = null;
 
@@ -277,6 +281,7 @@
 
     let roster = [];
     let leaveLog = [];
+    let grantLog = [];
     let editingId = null;
     let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let currentPage = "home";
@@ -286,6 +291,7 @@
         // 실시간 동기화: 다른 사용자의 변경도 자동으로 반영됨
         fbDb.ref("roster").on("value", (snap) => { roster = objToArr(snap.val()); paint(); });
         fbDb.ref("logs").on("value", (snap) => { leaveLog = objToArr(snap.val()); paint(); });
+        fbDb.ref("grants").on("value", (snap) => { grantLog = objToArr(snap.val()); paint(); });
 
         // 최초 1회: Firebase가 비어있고 이 브라우저에 기존 로컬 데이터가 있으면 업로드해서 이어받기
         fbDb.ref("roster").once("value").then((snap) => {
@@ -303,6 +309,23 @@
           }
         });
 
+        // 기존 방식(직원별 고정 "대체휴가 발생" 숫자)으로 입력된 데이터를 발생 내역(사유: 기존 데이터 이전)으로 1회 변환
+        Promise.all([fbDb.ref("roster").once("value"), fbDb.ref("grants").once("value")]).then(([rSnap, gSnap]) => {
+          if (gSnap.val()) return; // 이미 발생 내역이 있으면 건너뜀
+          const rArr = objToArr(rSnap.val());
+          const toMigrate = rArr.filter((r) => Number(r.compGranted) > 0);
+          if (!toMigrate.length) return;
+          const grants = {};
+          const clearedRoster = {};
+          toMigrate.forEach((r) => {
+            const gid = genId();
+            grants[gid] = { id: gid, empId: r.id, date: todayLocalStr(), days: Number(r.compGranted), reason: "기존 데이터 이전" };
+          });
+          rArr.forEach((r) => { clearedRoster[r.id] = { ...r, compGranted: 0 }; });
+          fbDb.ref("grants").set(grants);
+          fbDb.ref("roster").set(clearedRoster);
+        });
+
         startAutoRefresh();
         return;
       }
@@ -312,6 +335,10 @@
         const rawLog = localStorage.getItem(LOG_KEY);
         leaveLog = rawLog ? JSON.parse(rawLog) : [];
       } catch (e) { leaveLog = []; }
+      try {
+        const rawGrant = localStorage.getItem(GRANT_KEY);
+        grantLog = rawGrant ? JSON.parse(rawGrant) : [];
+      } catch (e) { grantLog = []; }
       try {
         const rawV2 = localStorage.getItem(ROSTER_KEY);
         if (rawV2) {
@@ -327,6 +354,14 @@
           });
           if (roster.length) { saveRoster(); saveLog(); }
         }
+        // 기존 compGranted 값을 발생 내역으로 1회 변환
+        if (!grantLog.length) {
+          const toMigrate = roster.filter((r) => Number(r.compGranted) > 0);
+          if (toMigrate.length) {
+            toMigrate.forEach((r) => { grantLog.push({ id: genId(), empId: r.id, date: todayLocalStr(), days: Number(r.compGranted), reason: "기존 데이터 이전" }); r.compGranted = 0; });
+            saveRoster(); saveGrant();
+          }
+        }
       } catch (e) { roster = []; }
       paint();
       startAutoRefresh();
@@ -339,6 +374,10 @@
     async function saveLog() {
       if (fbDb) { try { await fbDb.ref("logs").set(arrToObj(leaveLog)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
       try { localStorage.setItem(LOG_KEY, JSON.stringify(leaveLog)); } catch (e) { console.error("저장 실패", e); }
+    }
+    async function saveGrant() {
+      if (fbDb) { try { await fbDb.ref("grants").set(arrToObj(grantLog)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(GRANT_KEY, JSON.stringify(grantLog)); } catch (e) { console.error("저장 실패", e); }
     }
 
     function startAutoRefresh() {
@@ -360,6 +399,9 @@
     function sumLeave(empId, type) {
       return round1(leaveLog.filter((l) => l.empId === empId && l.type === type).reduce((s, l) => s + (Number(l.days) || 0), 0));
     }
+    function sumGrant(empId) {
+      return round1(grantLog.filter((g) => g.empId === empId).reduce((s, g) => s + (Number(g.days) || 0), 0));
+    }
 
     function exportExcel() {
       if (typeof XLSX === "undefined") { alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
@@ -374,11 +416,19 @@
         .sort((a, b) => (a.date < b.date ? -1 : 1))
         .map((l) => {
           const emp = roster.find((r) => r.id === l.empId);
-          return { "이름": emp ? emp.name : "(삭제된 직원)", "날짜": l.date, "유형": l.type === "annual" ? "연차" : "대체휴가", "일수": l.days };
+          return { "이름": emp ? emp.name : "(삭제된 직원)", "날짜": l.date, "유형": l.type === "annual" ? "연차" : "대체휴가", "일수": l.days, "사유": l.reason || "" };
+        });
+      const grantRows = grantLog
+        .slice()
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+        .map((g) => {
+          const emp = roster.find((r) => r.id === g.empId);
+          return { "이름": emp ? emp.name : "(삭제된 직원)", "날짜": g.date, "일수": g.days, "사유": g.reason || "" };
         });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "직원현황");
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logRows), "휴가사용내역");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(grantRows), "대체휴가발생내역");
       XLSX.writeFile(wb, `연차현황_${todayLocalStr()}.xlsx`);
     }
 
@@ -387,7 +437,7 @@
         const hireDate = parseDate(r.hireDate);
         const result = calcLeave(hireDate, today);
         const usedAnnual = sumLeave(r.id, "annual");
-        const compGranted = Number(r.compGranted) || 0;
+        const compGranted = sumGrant(r.id);
         const compUsed = sumLeave(r.id, "comp");
         return {
           id: r.id, name: r.name || "-", hireDate, usedAnnual,
@@ -430,7 +480,7 @@
             <td class="num">${c.granted}일</td>
             <td class="num">${c.usedAnnual}일</td>
             <td class="num">${c.remainingAnnual}일</td>
-            <td><input type="number" class="edit-comp" min="0" step="0.5" value="${c.compGranted}" style="width:70px;" /></td>
+            <td class="num">${c.compGranted}일</td>
             <td class="num">${c.compUsed}일</td>
             <td class="num">${c.compRemaining}일</td>
             <td class="detail">저장하면 반영됩니다</td>
@@ -468,11 +518,23 @@
             const emp = roster.find((r) => r.id === l.empId);
             return `
           <div class="log-item">
-            <div><span class="log-type ${l.type}">${l.type === "annual" ? "연차" : "대체"}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${l.date} · ${l.days}일</div>
+            <div><span class="log-type ${l.type}">${l.type === "annual" ? "연차" : "대체"}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${l.date} · ${l.days}일${l.reason ? ` · <span class="log-reason">${escapeHtml(l.reason)}</span>` : ""}</div>
             <button class="log-del" data-id="${l.id}">삭제</button>
           </div>`;
           }).join("")
         : `<div class="empty-mini">등록된 휴가 사용 내역이 없습니다.</div>`;
+
+      const recentGrants = grantLog.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
+      const grantsHtml = recentGrants.length
+        ? recentGrants.map((g) => {
+            const emp = roster.find((r) => r.id === g.empId);
+            return `
+          <div class="log-item">
+            <div><span class="log-type comp">발생</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${g.date} · ${g.days}일${g.reason ? ` · <span class="log-reason">${escapeHtml(g.reason)}</span>` : ""}</div>
+            <button class="grant-del" data-id="${g.id}">삭제</button>
+          </div>`;
+          }).join("")
+        : `<div class="empty-mini">등록된 대체휴가 발생 내역이 없습니다.</div>`;
 
       // 캘린더
       const y = calMonth.getFullYear(), m = calMonth.getMonth();
@@ -516,8 +578,7 @@
           <h2>직원 추가</h2>
           <div class="form-grid">
             <div class="full"><label>이름</label><input id="in-name" type="text" placeholder="예: OOO" /></div>
-            <div><label>입사일</label>${dateGroupHtml("in-hire")}</div>
-            <div><label>대체휴가 발생(일)</label><input id="in-comp" type="number" min="0" step="0.5" value="0" /></div>
+            <div class="full"><label>입사일</label>${dateGroupHtml("in-hire")}</div>
           </div>
           <button class="btn" id="add-btn">직원 추가</button>
         </div>
@@ -550,13 +611,30 @@
               <div class="full"><label>직원</label><select id="log-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
               <div><label>날짜</label>${dateGroupHtml("log-date")}</div>
               <div><label>유형</label><select id="log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
-              <div class="full"><label>사용 일수</label><input id="log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div><label>사용 일수</label><input id="log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="log-reason" type="text" placeholder="예: 개인 사정, 가족 여행 등" /></div>
             </div>
             <button class="btn secondary" id="log-add-btn">휴가 등록</button>
           </div>
           <div class="card">
             <h2>최근 휴가 사용 내역</h2>
             ${logsHtml}
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h2>대체휴가 발생 등록</h2>
+            <div class="form-grid">
+              <div class="full"><label>직원</label><select id="grant-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
+              <div><label>날짜</label>${dateGroupHtml("grant-date")}</div>
+              <div><label>발생 일수</label><input id="grant-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="grant-reason" type="text" placeholder="예: 휴일 특근 대체, 야간근무 대체 등" /></div>
+            </div>
+            <button class="btn secondary" id="grant-add-btn">대체휴가 발생 등록</button>
+          </div>
+          <div class="card">
+            <h2>최근 대체휴가 발생 내역</h2>
+            ${grantsHtml}
           </div>
         </div>`,
 
@@ -616,9 +694,8 @@
         const name = document.getElementById("in-name").value.trim();
         const hireGroup = root.querySelector(".date-group.in-hire");
         const hire = getDateGroupValue(hireGroup);
-        const comp = document.getElementById("in-comp").value;
         if (!hire) { hireGroup.querySelector(".dg-y").focus(); return; }
-        roster.push({ id: genId(), name, hireDate: hire, compGranted: Number(comp) || 0 });
+        roster.push({ id: genId(), name, hireDate: hire });
         saveRoster();
         paint();
       };
@@ -630,11 +707,27 @@
         const date = getDateGroupValue(dateGroup);
         const type = document.getElementById("log-type").value;
         const days = Number(document.getElementById("log-days").value) || 0;
+        const reason = document.getElementById("log-reason").value.trim();
         if (!empId) { alert("직원을 선택해주세요."); return; }
         if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
         if (days <= 0) { alert("사용 일수를 입력해주세요."); return; }
-        leaveLog.push({ id: genId(), empId, date, type, days });
+        leaveLog.push({ id: genId(), empId, date, type, days, reason });
         saveLog();
+        paint();
+      };
+
+      const grantAddBtn = document.getElementById("grant-add-btn");
+      if (grantAddBtn) grantAddBtn.onclick = () => {
+        const empId = document.getElementById("grant-emp").value;
+        const dateGroup = root.querySelector(".date-group.grant-date");
+        const date = getDateGroupValue(dateGroup);
+        const days = Number(document.getElementById("grant-days").value) || 0;
+        const reason = document.getElementById("grant-reason").value.trim();
+        if (!empId) { alert("직원을 선택해주세요."); return; }
+        if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
+        if (days <= 0) { alert("발생 일수를 입력해주세요."); return; }
+        grantLog.push({ id: genId(), empId, date, days, reason });
+        saveGrant();
         paint();
       };
 
@@ -647,12 +740,22 @@
         };
       });
 
+      root.querySelectorAll(".grant-del").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          grantLog = grantLog.filter((g) => g.id !== id);
+          saveGrant();
+          paint();
+        };
+      });
+
       root.querySelectorAll(".del-btn").forEach((btn) => {
         btn.onclick = () => {
           const id = btn.getAttribute("data-id");
           roster = roster.filter((r) => r.id !== id);
           leaveLog = leaveLog.filter((l) => l.empId !== id);
-          saveRoster(); saveLog();
+          grantLog = grantLog.filter((g) => g.empId !== id);
+          saveRoster(); saveLog(); saveGrant();
           paint();
         };
       });
@@ -664,10 +767,9 @@
           const row = btn.closest("tr");
           const name = row.querySelector(".edit-name").value.trim();
           const hire = getDateGroupValue(row.querySelector(".date-group.edit-hire"));
-          const comp = row.querySelector(".edit-comp").value;
           if (!hire) return;
           const emp = roster.find((r) => r.id === id);
-          if (emp) { emp.name = name; emp.hireDate = hire; emp.compGranted = Number(comp) || 0; }
+          if (emp) { emp.name = name; emp.hireDate = hire; }
           editingId = null;
           saveRoster();
           paint();
