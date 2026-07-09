@@ -156,6 +156,12 @@
   color: var(--ink);
 }
 #leave-app input:focus { outline: 2px solid var(--navy); outline-offset: 1px; background: var(--paper); }
+#leave-app .date-group { display: flex; align-items: center; gap: 4px; }
+#leave-app .date-group .dg-y { width: 62px; text-align: center; flex: none; }
+#leave-app .date-group .dg-m,
+#leave-app .date-group .dg-d { width: 40px; text-align: center; flex: none; }
+#leave-app .date-group .dg-sep { color: var(--gray); font-weight: 600; }
+#leave-app td .date-group { display: inline-flex; }
 #leave-app .btn {
   background: var(--navy);
   color: white;
@@ -295,6 +301,52 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  function dateGroupHtml(extraClass, y, m, d) {
+    return `<div class="date-group ${extraClass || ""}">
+      <input type="text" inputmode="numeric" maxlength="4" class="dg-y" placeholder="YYYY" value="${y || ""}" />
+      <span class="dg-sep">-</span>
+      <input type="text" inputmode="numeric" maxlength="2" class="dg-m" placeholder="MM" value="${m || ""}" />
+      <span class="dg-sep">-</span>
+      <input type="text" inputmode="numeric" maxlength="2" class="dg-d" placeholder="DD" value="${d || ""}" />
+    </div>`;
+  }
+
+  function wireDateGroup(groupEl) {
+    if (!groupEl) return;
+    const y = groupEl.querySelector(".dg-y");
+    const m = groupEl.querySelector(".dg-m");
+    const d = groupEl.querySelector(".dg-d");
+    y.addEventListener("input", () => {
+      y.value = y.value.replace(/\D/g, "").slice(0, 4);
+      if (y.value.length === 4) m.focus();
+    });
+    m.addEventListener("input", () => {
+      m.value = m.value.replace(/\D/g, "").slice(0, 2);
+      if (m.value.length === 2) d.focus();
+    });
+    d.addEventListener("input", () => {
+      d.value = d.value.replace(/\D/g, "").slice(0, 2);
+    });
+    m.addEventListener("keydown", (e) => { if (e.key === "Backspace" && m.value === "") y.focus(); });
+    d.addEventListener("keydown", (e) => { if (e.key === "Backspace" && d.value === "") m.focus(); });
+    [y, m, d].forEach((el) => el.addEventListener("blur", () => {
+      if (m.value && m.value.length === 1) m.value = m.value.padStart(2, "0");
+      if (d.value && d.value.length === 1) d.value = d.value.padStart(2, "0");
+    }));
+  }
+
+  function getDateGroupValue(groupEl) {
+    if (!groupEl) return null;
+    const y = groupEl.querySelector(".dg-y").value;
+    let m = groupEl.querySelector(".dg-m").value;
+    let d = groupEl.querySelector(".dg-d").value;
+    if (y.length !== 4 || !m || !d) return null;
+    m = m.padStart(2, "0");
+    d = d.padStart(2, "0");
+    if (Number(m) < 1 || Number(m) > 12 || Number(d) < 1 || Number(d) > 31) return null;
+    return `${y}-${m}-${d}`;
+  }
+
   function render() {
     const root = document.getElementById("leave-app");
     root.innerHTML = `<div class="loading-msg">대시보드를 불러오는 중…</div>`;
@@ -376,11 +428,13 @@
         .sort((a, b) => a.hireDate - b.hireDate)
         .map((c) => {
           if (c.idx === editingIdx) {
-            const hireStr = `${c.hireDate.getFullYear()}-${String(c.hireDate.getMonth() + 1).padStart(2, "0")}-${String(c.hireDate.getDate()).padStart(2, "0")}`;
+            const y = c.hireDate.getFullYear();
+            const m = String(c.hireDate.getMonth() + 1).padStart(2, "0");
+            const d = String(c.hireDate.getDate()).padStart(2, "0");
             return `
           <tr class="editing-row">
             <td><input type="text" class="edit-name" value="${escapeHtml(c.name)}" /></td>
-            <td><input type="date" class="edit-hire" value="${hireStr}" /></td>
+            <td>${dateGroupHtml("edit-hire", y, m, d)}</td>
             <td><span class="status-pill status-${c.statusKey}">${c.statusLabel}</span></td>
             <td class="num">${c.granted}일</td>
             <td><input type="number" class="edit-used" min="0" step="0.5" value="${c.used}" /></td>
@@ -471,7 +525,7 @@
               </div>
               <div>
                 <label>입사일</label>
-                <input id="in-hire" type="date" />
+                ${dateGroupHtml("in-hire")}
               </div>
               <div>
                 <label>사용한 연차(일)</label>
@@ -508,10 +562,11 @@
 
       document.getElementById("add-btn").onclick = () => {
         const name = document.getElementById("in-name").value.trim();
-        const hire = document.getElementById("in-hire").value;
+        const hireGroup = root.querySelector(".date-group.in-hire");
+        const hire = getDateGroupValue(hireGroup);
         const used = document.getElementById("in-used").value;
         if (!hire) {
-          document.getElementById("in-hire").focus();
+          hireGroup.querySelector(".dg-y").focus();
           return;
         }
         roster.push({ name, hireDate: hire, used });
@@ -547,7 +602,7 @@
           const idx = Number(btn.getAttribute("data-idx"));
           const row = btn.closest("tr");
           const name = row.querySelector(".edit-name").value.trim();
-          const hire = row.querySelector(".edit-hire").value;
+          const hire = getDateGroupValue(row.querySelector(".date-group.edit-hire"));
           const used = row.querySelector(".edit-used").value;
           if (!hire) return;
           roster[idx] = { name, hireDate: hire, used };
@@ -556,6 +611,8 @@
           paint();
         };
       });
+
+      root.querySelectorAll(".date-group").forEach(wireDateGroup);
     }
 
     load();
