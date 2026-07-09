@@ -1,3 +1,11 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>연차 관리 대시보드 · 크림웨이브</title>
+</head>
+<body style="margin:0; background:#F7F5F0;">
 <div id="leave-app"></div>
 <style>
 #leave-app {
@@ -180,6 +188,14 @@
 #leave-app .detail { color: var(--gray); font-size: 11.5px; line-height: 1.5; max-width: 250px; }
 #leave-app .del-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; font-weight: 700; padding: 4px 6px; }
 #leave-app .del-btn:hover { text-decoration: underline; }
+#leave-app .edit-btn { background: none; border: none; color: var(--navy); cursor: pointer; font-size: 12px; font-weight: 700; padding: 4px 6px; }
+#leave-app .edit-btn:hover { text-decoration: underline; }
+#leave-app .save-btn { background: var(--teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 5px 10px; margin-right: 4px; }
+#leave-app .save-btn:hover { opacity: 0.85; }
+#leave-app .cancel-btn { background: var(--line); color: var(--ink); border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 5px 10px; }
+#leave-app .cancel-btn:hover { opacity: 0.85; }
+#leave-app .editing-row { background: #FBF8EF; }
+#leave-app .editing-row input { padding: 6px 8px; font-size: 13px; }
 #leave-app .empty { text-align: center; color: var(--gray); padding: 34px 10px; font-size: 13.5px; }
 #leave-app .footnote {
   margin: 16px 20px 20px;
@@ -284,11 +300,12 @@
     root.innerHTML = `<div class="loading-msg">대시보드를 불러오는 중…</div>`;
 
     let roster = [];
+    let editingIdx = null;
 
     async function load() {
       try {
-        const res = await window.storage.get(KEY, false);
-        roster = res ? JSON.parse(res.value) : [];
+        const raw = localStorage.getItem(KEY);
+        roster = raw ? JSON.parse(raw) : [];
       } catch (e) {
         roster = [];
       }
@@ -298,7 +315,7 @@
 
     async function save() {
       try {
-        await window.storage.set(KEY, JSON.stringify(roster), false);
+        localStorage.setItem(KEY, JSON.stringify(roster));
       } catch (e) {
         console.error("저장 실패", e);
       }
@@ -357,7 +374,25 @@
 
       const rows = computed
         .sort((a, b) => a.hireDate - b.hireDate)
-        .map((c) => `
+        .map((c) => {
+          if (c.idx === editingIdx) {
+            const hireStr = `${c.hireDate.getFullYear()}-${String(c.hireDate.getMonth() + 1).padStart(2, "0")}-${String(c.hireDate.getDate()).padStart(2, "0")}`;
+            return `
+          <tr class="editing-row">
+            <td><input type="text" class="edit-name" value="${escapeHtml(c.name)}" /></td>
+            <td><input type="date" class="edit-hire" value="${hireStr}" /></td>
+            <td><span class="status-pill status-${c.statusKey}">${c.statusLabel}</span></td>
+            <td class="num">${c.granted}일</td>
+            <td><input type="number" class="edit-used" min="0" step="0.5" value="${c.used}" /></td>
+            <td class="num">${c.remaining}일</td>
+            <td class="detail">입사일·사용일수 수정 후 저장하세요</td>
+            <td>
+              <button class="save-btn" data-idx="${c.idx}">저장</button>
+              <button class="cancel-btn" data-idx="${c.idx}">취소</button>
+            </td>
+          </tr>`;
+          }
+          return `
           <tr>
             <td>${escapeHtml(c.name)}</td>
             <td>${fmt(c.hireDate)}</td>
@@ -366,8 +401,12 @@
             <td class="num">${c.used}일</td>
             <td class="num">${c.remaining}일</td>
             <td class="detail">${c.detail}</td>
-            <td><button class="del-btn" data-idx="${c.idx}">삭제</button></td>
-          </tr>`)
+            <td>
+              <button class="edit-btn" data-idx="${c.idx}">수정</button>
+              <button class="del-btn" data-idx="${c.idx}">삭제</button>
+            </td>
+          </tr>`;
+        })
         .join("");
 
       const upcomingHtml = upcoming.length
@@ -488,6 +527,35 @@
           paint();
         };
       });
+
+      root.querySelectorAll(".edit-btn").forEach((btn) => {
+        btn.onclick = () => {
+          editingIdx = Number(btn.getAttribute("data-idx"));
+          paint();
+        };
+      });
+
+      root.querySelectorAll(".cancel-btn").forEach((btn) => {
+        btn.onclick = () => {
+          editingIdx = null;
+          paint();
+        };
+      });
+
+      root.querySelectorAll(".save-btn").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          const row = btn.closest("tr");
+          const name = row.querySelector(".edit-name").value.trim();
+          const hire = row.querySelector(".edit-hire").value;
+          const used = row.querySelector(".edit-used").value;
+          if (!hire) return;
+          roster[idx] = { name, hireDate: hire, used };
+          editingIdx = null;
+          save();
+          paint();
+        };
+      });
     }
 
     load();
@@ -496,3 +564,5 @@
   render();
 })();
 </script>
+</body>
+</html>
