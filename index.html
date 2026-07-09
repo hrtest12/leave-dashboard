@@ -255,23 +255,27 @@
     return /대체\s*휴가|대체휴가/.test(text) ? "comp" : "annual";
   }
   function extractDateNearLabel(flat) {
-    // 요일이 붙은 모든 날짜(YYYY-MM-DD(요일))를 찾아, 각 날짜 앞쪽 문맥을 함께 수집
-    const dateRe = /(\d{4}-\d{2}-\d{2})\s*\([일월화수목금토]\)/g;
-    const candidates = [];
-    let m;
-    while ((m = dateRe.exec(flat)) !== null) {
-      const context = flat.slice(Math.max(0, m.index - 15), m.index);
-      candidates.push({ date: m[1], context });
+    // 1) "기안일" 라벨 뒤에 오는 날짜를 먼저 파악해서 제외 대상으로 삼음
+    let gianDate = null;
+    const gianIdx = flat.indexOf("기안일");
+    if (gianIdx !== -1) {
+      const gm = flat.slice(gianIdx, gianIdx + 30).match(/(\d{4}-\d{2}-\d{2})/);
+      if (gm) gianDate = gm[1];
     }
-    if (!candidates.length) {
-      const plain = flat.match(/휴가신청일\s*(\d{4}-\d{2}-\d{2})/);
-      return plain ? plain[1] : "";
+    // 2) "신청일"이라는 글자가 붙어있는 라벨(휴가신청일) 뒤 넓은 범위에서 날짜를 탐색
+    //    (기안일과 같은 날짜가 먼저 걸리면 건너뛰고 다른 날짜를 찾음)
+    const reqIdx = flat.search(/신청일/);
+    if (reqIdx !== -1) {
+      const windowMatches = [...flat.slice(reqIdx, reqIdx + 60).matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+      const differing = windowMatches.find((d) => d !== gianDate);
+      if (differing) return differing;
+      if (windowMatches.length) return windowMatches[0];
     }
-    // "신청일"이라는 단어와 가장 가까운 날짜를 우선 채택 (기안일 날짜는 제외)
-    const preferred = candidates.find((c) => /신청일/.test(c.context));
-    const notGian = candidates.find((c) => !/기안일/.test(c.context));
-    const chosen = preferred || notGian || candidates[0];
-    return chosen.date;
+    // 3) 라벨 탐색이 실패하면, 문서에 있는 날짜 중 기안일 날짜와 다른 것을 채택
+    const allDates = [...flat.matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+    const uniqDates = [...new Set(allDates)];
+    const other = uniqDates.find((d) => d !== gianDate);
+    return other || uniqDates[0] || "";
   }
   function extractFieldsFromText(text) {
     const flat = text.replace(/\s+/g, " ");
@@ -297,7 +301,7 @@
       const content = await page.getTextContent();
       text += content.items.map((it) => it.str).join(" ") + "\n";
     }
-    return [extractFieldsFromText(text)];
+    return { rows: [extractFieldsFromText(text)], rawText: text };
   }
   async function parseExcelFile(file) {
     if (typeof XLSX === "undefined") throw new Error("엑셀 라이브러리를 불러오지 못했습니다.");
@@ -305,7 +309,7 @@
     const wb = XLSX.read(buf, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    if (!json.length) return [];
+    if (!json.length) return { rows: [], rawText: null };
     const keys = Object.keys(json[0]);
     const findKey = (patterns) => keys.find((k) => patterns.some((p) => k.includes(p)));
     const kName = findKey(["기안자", "성명", "이름", "신청자"]);
@@ -313,7 +317,7 @@
     const kDays = findKey(["신청 휴가수", "휴가수", "일수"]);
     const kReason = findKey(["신청사유", "사유"]);
     const kType = findKey(["휴가유형", "유형"]);
-    return json.map((row) => {
+    const rows = json.map((row) => {
       const rawDate = String(row[kDate] || "").match(/\d{4}-\d{2}-\d{2}/);
       const rawDays = String(row[kDays] || "").match(/[\d.]+/);
       return {
@@ -324,6 +328,7 @@
         type: guessTypeFromText(String(row[kType] || "")),
       };
     });
+    return { rows, rawText: JSON.stringify(json, null, 2) };
   }
 
   function dateGroupHtml(extraClass, y, m, d) {
@@ -398,6 +403,7 @@
     let selectedStat = null;
     let docPreviewRows = null;
     let docParseError = null;
+    let docRawText = null;
 
     async function load() {
       if (fbDb) {
@@ -738,9 +744,14 @@
       }
 
       // 전자결재 문서 업로드 미리보기
+      const rawTextViewer = docRawText
+        ? `<details style="margin-top:12px;"><summary style="cursor:pointer; font-size:12px; color:var(--navy); font-weight:700;">🔍 인식된 원문 보기 (인식이 틀렸을 때 이 내용을 캡처해서 공유해주세요)</summary>
+            <pre style="white-space:pre-wrap; font-size:11px; color:var(--gray); background:var(--cream); padding:10px; border-radius:8px; margin-top:8px; max-height:220px; overflow:auto;">${escapeHtml(docRawText)}</pre>
+          </details>`
+        : "";
       let docPreviewHtml = "";
       if (docParseError) {
-        docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--red);">⚠ ${escapeHtml(docParseError)}</div></div>`;
+        docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--red);">⚠ ${escapeHtml(docParseError)}</div>${rawTextViewer}</div>`;
       } else if (docPreviewRows && docPreviewRows.length) {
         docPreviewHtml = `
         <div class="card" style="margin-bottom:16px;">
@@ -771,6 +782,7 @@
             <button class="btn secondary" id="doc-confirm-btn" style="width:auto;">전체 등록</button>
             <button class="cancel-btn" id="doc-discard-btn" style="padding:10px 16px;">취소</button>
           </div>
+          ${rawTextViewer}
           <div class="footnote" style="margin:14px 0 0; padding-top:10px;">
             ※ 자동 인식은 참고용입니다. 이름이 매칭되지 않았거나 날짜·일수가 잘못 읽힌 경우 직접 수정한 뒤 등록해주세요.
           </div>
@@ -1049,10 +1061,12 @@
         docParseBtn.disabled = true;
         try {
           const isPdf = /\.pdf$/i.test(file.name);
-          const rows = isPdf ? await parsePdfFile(file) : await parseExcelFile(file);
+          const result = isPdf ? await parsePdfFile(file) : await parseExcelFile(file);
+          const rows = result.rows;
+          docRawText = result.rawText;
           const valid = rows.filter((r) => r.date);
           if (!valid.length) {
-            docParseError = "파일에서 날짜·직원 정보를 인식하지 못했습니다. 파일 형식을 확인해주세요.";
+            docParseError = "파일에서 날짜·직원 정보를 인식하지 못했습니다. 아래 '인식된 원문 보기'를 확인해주세요.";
             docPreviewRows = null;
           } else {
             docPreviewRows = valid;
