@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>연차 관리 대시보드 · 크림웨이브</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body style="margin:0; background:#F7F5F0;">
+<div id="leave-app"></div>
+<style>
+#leave-app {
+  --navy: #1F3864;
+  --navy-deep: #142845;
+  --cream: #F7F5F0;
+  --paper: #FFFFFF;
+  --line: #E3DFD6;
+  --teal: #2F6F62;
+  --teal-bg: #E8F1EE;
+  --amber: #B5791F;
+  --amber-bg: #FAF0DF;
+  --violet: #5B3E9E;
+  --violet-bg: #EAE6F5;
+  --gray: #6B6B66;
+  --ink: #26241F;
+  --red: #B33B3B;
+  font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Pretendard", sans-serif;
+  color: var(--ink);
+  background: var(--cream);
+  padding: 26px 24px 40px;
+  border-radius: 14px;
+  max-width: 1180px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+#leave-app * { box-sizing: border-box; }
+#leave-app .top-row { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+#leave-app .eyebrow { font-size: 12px; letter-spacing: 0.14em; color: var(--navy); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; }
+#leave-app h1 { font-size: 25px; margin: 0 0 4px; color: var(--navy-deep); letter-spacing: -0.01em; font-weight: 800; }
+#leave-app .sub { color: var(--gray); font-size: 13.5px; margin: 0; line-height: 1.5; }
+#leave-app .top-right { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+#leave-app .tab-nav { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+#leave-app .tab-btn {
+  background: none; border: none; cursor: pointer; font-size: 13.5px; font-weight: 700; color: var(--gray);
+  padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+#leave-app .tab-btn:hover { color: var(--navy-deep); }
+#leave-app .tab-btn.active { color: var(--navy-deep); border-bottom: 2px solid var(--navy); }
+#leave-app .page > .card,
+#leave-app .page > .stat-grid,
+#leave-app .page > .grid-2,
+#leave-app .page > .table-card,
+#leave-app .page > .cal-card { margin-bottom: 16px; }
+#leave-app .page > *:last-child { margin-bottom: 0; }
+#leave-app .sync-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+#leave-app .sync-badge.on { background: var(--teal-bg); color: var(--teal); }
+#leave-app .sync-badge.off { background: var(--line); color: var(--gray); }
+#leave-app .today-box { background: var(--navy); color: white; border-radius: 12px; padding: 12px 18px; text-align: right; min-width: 220px; }
+#leave-app .today-box .label { font-size: 11px; opacity: 0.75; margin-bottom: 3px; }
+#leave-app .today-box .date { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#leave-app .today-box .live { font-size: 10.5px; opacity: 0.8; margin-top: 3px; }
+#leave-app .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #6FE3A0; margin-right: 5px; animation: pulse 1.8s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+#leave-app .xlsx-btn { background: var(--teal); color: white; border: none; border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+#leave-app .xlsx-btn:hover { opacity: 0.88; }
+
+#leave-app .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+#leave-app .stat-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px; }
+#leave-app .stat-card .n { font-size: 26px; font-weight: 800; color: var(--navy-deep); font-variant-numeric: tabular-nums; }
+#leave-app .stat-card .l { font-size: 12px; color: var(--gray); margin-top: 2px; font-weight: 600; }
+#leave-app .stat-card.accent-a { border-top: 3px solid var(--amber); }
+#leave-app .stat-card.accent-b { border-top: 3px solid var(--teal); }
+#leave-app .stat-card.accent-c { border-top: 3px solid var(--violet); }
+#leave-app .stat-card.accent-total { border-top: 3px solid var(--navy); }
+#leave-app .stat-card.clickable { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+#leave-app .stat-card.clickable:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); transform: translateY(-1px); }
+#leave-app .breakdown-card h2 { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+#leave-app .breakdown-close { background: none; border: none; color: var(--gray); cursor: pointer; font-size: 12px; font-weight: 700; margin-left: auto; }
+#leave-app .breakdown-close:hover { color: var(--red); }
+#leave-app .summary-block { margin-bottom: 16px; }
+#leave-app .summary-block:last-child { margin-bottom: 0; }
+#leave-app .summary-label { font-size: 12px; font-weight: 700; color: var(--navy); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+#leave-app .grid-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
+#leave-app .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+#leave-app .card h2 { font-size: 14.5px; margin: 0 0 12px; color: var(--navy-deep); font-weight: 700; display: flex; align-items: center; gap: 8px; }
+#leave-app .upcoming-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+#leave-app .upcoming-item:last-child { border-bottom: none; }
+#leave-app .upcoming-item .name { font-weight: 700; color: var(--ink); }
+#leave-app .upcoming-item .meta { color: var(--gray); font-size: 11.5px; margin-top: 1px; }
+#leave-app .dday { font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: var(--violet-bg); color: var(--violet); white-space: nowrap; }
+#leave-app .dday.urgent { background: var(--amber-bg); color: var(--amber); }
+#leave-app .empty-mini { color: var(--gray); font-size: 12.5px; padding: 10px 0; }
+
+#leave-app .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#leave-app .form-grid .full { grid-column: 1 / -1; }
+#leave-app label { display: block; font-size: 12px; color: var(--gray); margin-bottom: 5px; font-weight: 600; }
+#leave-app input, #leave-app select {
+  width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: var(--cream); color: var(--ink);
+}
+#leave-app input:focus, #leave-app select:focus { outline: 2px solid var(--navy); outline-offset: 1px; background: var(--paper); }
+#leave-app .date-group { display: flex; align-items: center; gap: 4px; }
+#leave-app .date-group .dg-y { width: 62px; text-align: center; flex: none; }
+#leave-app .date-group .dg-m, #leave-app .date-group .dg-d { width: 40px; text-align: center; flex: none; }
+#leave-app .date-group .dg-sep { color: var(--gray); font-weight: 600; }
+#leave-app td .date-group { display: inline-flex; }
+#leave-app .btn { background: var(--navy); color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 4px; }
+#leave-app .btn:hover { background: var(--navy-deep); }
+#leave-app .btn.secondary { background: var(--teal); }
+
+#leave-app .log-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+#leave-app .log-item:last-child { border-bottom: none; }
+#leave-app .log-type { font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; margin-right: 6px; }
+#leave-app .log-type.annual { background: var(--teal-bg); color: var(--teal); }
+#leave-app .log-type.comp { background: var(--violet-bg); color: var(--violet); }
+#leave-app .log-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 11.5px; font-weight: 700; }
+#leave-app .log-del:hover { text-decoration: underline; }
+#leave-app .grant-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 11.5px; font-weight: 700; }
+#leave-app .grant-del:hover { text-decoration: underline; }
+#leave-app .log-reason { color: var(--gray); font-style: italic; }
+
+#leave-app .cal-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; }
+#leave-app .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+#leave-app .cal-nav { display: flex; gap: 8px; align-items: center; }
+#leave-app .cal-nav button { background: var(--cream); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--navy-deep); }
+#leave-app .cal-nav button:hover { background: var(--line); }
+#leave-app .cal-title { font-size: 15px; font-weight: 800; color: var(--navy-deep); min-width: 110px; text-align: center; }
+#leave-app .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+#leave-app .cal-dow { text-align: center; font-size: 11.5px; font-weight: 700; color: var(--gray); padding-bottom: 4px; }
+#leave-app .cal-cell { min-height: 74px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--cream); }
+#leave-app .cal-cell.empty { background: transparent; border: none; }
+#leave-app .cal-cell.today { border: 2px solid var(--navy); background: var(--paper); }
+#leave-app .cal-daynum { font-size: 12px; font-weight: 700; color: var(--gray); margin-bottom: 4px; }
+#leave-app .cal-chip { display: block; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#leave-app .cal-chip.annual { background: var(--teal-bg); color: var(--teal); }
+#leave-app .cal-chip.comp { background: var(--violet-bg); color: var(--violet); }
+#leave-app .cal-more { font-size: 10px; color: var(--gray); }
+
+#leave-app .table-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+#leave-app .table-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 0; }
+#leave-app .table-scroll { overflow-x: auto; }
+#leave-app table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; min-width: 1100px; }
+#leave-app th { text-align: left; background: var(--navy); color: white; padding: 10px 12px; font-weight: 700; font-size: 11.5px; white-space: nowrap; }
+#leave-app td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+#leave-app tbody tr:hover { background: #FBFAF7; }
+#leave-app tr:last-child td { border-bottom: none; }
+#leave-app .status-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+#leave-app .status-a { background: var(--amber-bg); color: var(--amber); }
+#leave-app .status-b { background: var(--teal-bg); color: var(--teal); }
+#leave-app .status-c { background: var(--violet-bg); color: var(--violet); }
+#leave-app .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--navy-deep); white-space: nowrap; }
+#leave-app .detail { color: var(--gray); font-size: 11.5px; line-height: 1.5; max-width: 220px; }
+#leave-app .del-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; font-weight: 700; padding: 4px 6px; }
+#leave-app .del-btn:hover { text-decoration: underline; }
+#leave-app .edit-btn { background: none; border: none; color: var(--navy); cursor: pointer; font-size: 12px; font-weight: 700; padding: 4px 6px; }
+#leave-app .edit-btn:hover { text-decoration: underline; }
+#leave-app .save-btn { background: var(--teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 5px 10px; margin-right: 4px; }
+#leave-app .save-btn:hover { opacity: 0.85; }
+#leave-app .cancel-btn { background: var(--line); color: var(--ink); border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 5px 10px; }
+#leave-app .cancel-btn:hover { opacity: 0.85; }
+#leave-app .editing-row { background: #FBF8EF; }
+#leave-app .editing-row input { padding: 6px 8px; font-size: 13px; }
+#leave-app .empty { text-align: center; color: var(--gray); padding: 34px 10px; font-size: 13.5px; }
+#leave-app .dup-row { background: #FDECEC !important; }
+#leave-app .dup-row:hover { background: #FBDFDF !important; }
+#leave-app .dup-warning { font-size: 10.5px; color: var(--red); font-weight: 700; margin-top: 3px; }
+#leave-app .footnote { margin: 16px 20px 20px; font-size: 11.5px; color: var(--gray); line-height: 1.6; border-top: 1px dashed var(--line); padding-top: 12px; }
+#leave-app .loading-msg { padding: 40px; text-align: center; color: var(--gray); font-size: 13px; }
+#leave-app .count-badge { background: var(--cream); color: var(--navy-deep); font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+@media (max-width: 760px) {
+  #leave-app .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #leave-app .grid-2 { grid-template-columns: 1fr; }
+  #leave-app .form-grid { grid-template-columns: 1fr; }
+  #leave-app .cal-cell { min-height: 56px; }
+}
+</style>
+<script>
+(function () {
+  const ROSTER_KEY_V1 = "leave-roster-v1";
+  const ROSTER_KEY = "leave-roster-v2";
+  const LOG_KEY = "leave-log-v1";
+  const GRANT_KEY = "comp-grant-log-v1";
+  const RESIGN_KEY = "resignation-settlements-v1";
+  let refreshTimer = null;
+  let lastDateStr = null;
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA8md-PNEENeEkAJzxJwl3j3kifbuE9nZk",
+    authDomain: "leavedashboard.firebaseapp.com",
+    databaseURL: "https://leavedashboard-default-rtdb.firebaseio.com",
+    projectId: "leavedashboard",
+    storageBucket: "leavedashboard.firebasestorage.app",
+    messagingSenderId: "875914038690",
+    appId: "1:875914038690:web:39ca1a2ba54c35c277f6fb",
+  };
+
+  let fbDb = null;
+  try {
+    if (typeof firebase !== "undefined") {
+      firebase.initializeApp(firebaseConfig);
+      fbDb = firebase.database();
+    }
+  } catch (e) {
+    console.error("Firebase 초기화 실패, 로컬 저장 모드로 전환:", e);
+    fbDb = null;
+  }
+
+  try {
+    if (typeof pdfjsLib !== "undefined") {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  } catch (e) { console.error("pdf.js 초기화 실패:", e); }
+
+  function arrToObj(arr) { const o = {}; (arr || []).forEach((item) => { o[item.id] = item; }); return o; }
+  function objToArr(obj) { return obj ? Object.keys(obj).map((k) => ({ ...obj[k], id: k })) : []; }
+
+  function genId() { return "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function parseDate(s) { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+  function fmt(d) { return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`; }
+  function fmtWeekday(d) { const w = ["일","월","화","수","목","금","토"][d.getDay()]; return `${fmt(d)} (${w})`; }
+  function addYears(d, n) { return new Date(d.getFullYear() + n, d.getMonth(), d.getDate()); }
+  function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+  function fullMonthsBetween(a, b) { let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()); if (b.getDate() < a.getDate()) months--; return Math.max(0, months); }
+  function fullYearsBetween(a, b) { let years = b.getFullYear() - a.getFullYear(); const anniv = new Date(a.getFullYear() + years, a.getMonth(), a.getDate()); if (anniv > b) years--; return Math.max(0, years); }
+  function round1(n) { return Math.round(n * 10) / 10; }
+  function roundUp(n) { return Math.ceil(n - 1e-9); } // 실제 지급/반영 값은 올림 처리 (산출 근거의 소수는 그대로 표기)
+  function dateToStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  // 시작일로부터 주말(토/일)을 제외하고 totalDays만큼 이어지는 날짜들을 구함 (예: 금요일 시작 2일 → 금, 월)
+  function expandToBusinessDays(startStr, totalDays) {
+    const result = [];
+    let remaining = Number(totalDays) || 0;
+    let cur = parseDate(startStr);
+    if (!cur || remaining <= 0) return result;
+    let guard = 0;
+    while (remaining > 0 && guard < 60) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) {
+        const portion = remaining >= 1 ? 1 : remaining;
+        result.push({ date: dateToStr(cur), portion });
+        remaining = round1(remaining - portion);
+      }
+      cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
+      guard++;
+    }
+    return result;
+  }
+  function annualFormula(serviceYears) { return Math.min(25, 15 + Math.floor((serviceYears - 1) / 2)); }
+
+  // ---- 퇴사자 연차 정산: 입사일 기준 vs 회계연도 기준 누적 발생량 비교 ----
+  function cumulativeAnniversary(hireDate, endDate) {
+    const detail = [];
+    const firstAnniv = addYears(hireDate, 1);
+    const firstYearEnd = endDate < firstAnniv ? endDate : firstAnniv;
+    const monthsInFirstYear = fullMonthsBetween(hireDate, firstYearEnd);
+    const firstYearMonthly = Math.min(11, monthsInFirstYear);
+    let total = firstYearMonthly;
+    detail.push({ label: "1년차 개근연차(월 1일, 최대 11일)", days: firstYearMonthly });
+    if (endDate <= firstAnniv) return { total: roundUp(total), detail, completedTotal: 0 };
+
+    // 매 기념일에 도달하는 즉시 그 시점의 정식 연차를 지급 (완성된 연차만 인정 — 법정 최소 기준)
+    let serviceYear = 1;
+    let cursor = firstAnniv;
+    while (cursor <= endDate) {
+      const grant = annualFormula(serviceYear);
+      total += grant;
+      detail.push({ label: `${serviceYear}주년(${fmt(cursor)}) 정식 지급`, days: grant });
+      serviceYear++;
+      cursor = addYears(hireDate, serviceYear);
+    }
+    // 마지막 미완성 구간(다음 기념일 전)은 아직 만 1년이 안 지났으므로 추가 지급 없음
+    const completedTotal = round1(detail.slice(0, -1).reduce((s, d) => s + d.days, 0));
+    return { total: roundUp(total), detail, completedTotal };
+  }
+  function cumulativeFiscal(hireDate, endDate) {
+    const detail = [];
+    const hireYear = hireDate.getFullYear();
+    const hireYearEnd = new Date(hireYear, 11, 31);
+    const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+    const nextJan1 = new Date(hireYear + 1, 0, 1);
+
+    if (endDate < nextJan1) {
+      // 아직 입사연도 안(첫 회계연도 전환 전): 월차만 인정, 비례연차는 미지급 상태
+      const monthsWorked = fullMonthsBetween(hireDate, endDate);
+      const monthlyLeave = Math.min(11, monthsWorked);
+      detail.push({ label: "입사연도 개근연차(월 1일, 최대 11일)", days: monthlyLeave });
+      return { total: roundUp(monthlyLeave), detail, completedTotal: 0 };
+    }
+
+    // 입사연도 비례연차: 15/365 비례가 최대 11일의 월차 기준을 항상 상회하므로,
+    // 월차를 별도로 더하지 않고 비례연차로 대체(중복 합산 방지)
+    const hireYearProrate = round1(15 * (daysInHireYear / 365));
+    let total = hireYearProrate;
+    detail.push({ label: `입사연도 비례연차(${fmt(nextJan1)} 지급 기준, ${daysInHireYear}일/365 — 월차 대체)`, days: hireYearProrate });
+
+    let year = hireYear + 1;
+    while (true) {
+      const jan1 = new Date(year, 0, 1);
+      const nextJan1b = new Date(year + 1, 0, 1);
+      const serviceYears = year - hireYear;
+      if (nextJan1b <= endDate) {
+        const grant = annualFormula(serviceYears);
+        total += grant;
+        detail.push({ label: `${year}.01.01 근속 ${serviceYears}년차 정식 지급`, days: grant });
+        year++;
+      } else {
+        const yearEnd = new Date(year, 11, 31);
+        const lastDay = endDate < yearEnd ? endDate : yearEnd;
+        const daysThisYear = daysBetween(jan1, lastDay) + 1;
+        const grant = round1(annualFormula(serviceYears) * (daysThisYear / 365));
+        total += grant;
+        detail.push({ label: `${year}.01.01 근속 ${serviceYears}년차, 퇴사연도 비례(${daysThisYear}일/365)`, days: grant });
+        break;
+      }
+    }
+    const completedTotal = round1(detail.slice(0, -1).reduce((s, d) => s + d.days, 0));
+    return { total: roundUp(total), detail, completedTotal };
+  }
+  function todayLocalStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---- 전자결재 문서(PDF/Excel) 자동 인식 ----
+  // PDF에서 추출되는 텍스트는 라벨 글자 사이사이에 공백이 끼어드는 경우가 많아(예: "휴 가 신 청 일"),
+  // 공백을 완전히 제거한 compact 버전으로 라벨/날짜/숫자를 찾고, 사유처럼 자연스러운 문장은
+  // 공백을 한 칸으로 정리한 flat 버전에서 찾는다.
+  function guessTypeFromText(text) {
+    return /대체\s*휴가|대체휴가/.test(text) ? "comp" : "annual";
+  }
+  function extractDateNearLabel(compact) {
+    // 1) "기안일" 라벨 뒤에 오는 날짜를 먼저 파악해서 제외 대상으로 삼음
+    let gianDate = null;
+    const gianIdx = compact.indexOf("기안일");
+    if (gianIdx !== -1) {
+      const gm = compact.slice(gianIdx, gianIdx + 30).match(/(\d{4}-\d{2}-\d{2})/);
+      if (gm) gianDate = gm[1];
+    }
+    // 2) "신청일"이라는 글자가 붙어있는 라벨(휴가신청일) 뒤 넓은 범위에서 날짜를 탐색
+    //    (기안일과 같은 날짜가 먼저 걸리면 건너뛰고 다른 날짜를 찾음)
+    const reqIdx = compact.search(/신청일/);
+    if (reqIdx !== -1) {
+      const windowMatches = [...compact.slice(reqIdx, reqIdx + 60).matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+      const differing = windowMatches.find((d) => d !== gianDate);
+      if (differing) return differing;
+      if (windowMatches.length) return windowMatches[0];
+    }
+    // 3) 라벨 탐색이 실패하면, 문서에 있는 날짜 중 기안일 날짜와 다른 것을 채택
+    const allDates = [...compact.matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+    const uniqDates = [...new Set(allDates)];
+    const other = uniqDates.find((d) => d !== gianDate);
+    return other || uniqDates[0] || "";
+  }
+  const TITLE_WORDS = "(주임|사원|대리|과장|차장|부장|팀장|실장|이사|대표)";
+  function extractFieldsFromText(text) {
+    const flat = text.replace(/\s+/g, " ");
+    const compact = text.replace(/\s+/g, "");
+    const nameMatch =
+      compact.match(new RegExp(`기안자([가-힣]{2,4})${TITLE_WORDS}`)) ||
+      compact.match(/기안자([가-힣]{2,3})/);
+    const dateMatch = extractDateNearLabel(compact);
+    const daysMatch = compact.match(/신청휴가수([\d.]+)d/i);
+    const reasonMatch =
+      flat.match(/([가-힣][가-힣\s]{5,80})\.?\s*$/) ||
+      flat.match(/신청사유[^가-힣]*([가-힣][^d]{2,60}?)(?:연차|대체휴가|휴가신청일|보유휴가|$)/);
+    return {
+      name: nameMatch ? nameMatch[1] : "",
+      date: dateMatch || "",
+      days: daysMatch ? Number(daysMatch[1]) : 1,
+      reason: reasonMatch ? reasonMatch[1].trim() : "",
+      type: guessTypeFromText(compact),
+    };
+  }
+  async function parsePdfFile(file) {
+    if (typeof pdfjsLib === "undefined") throw new Error("PDF 라이브러리를 불러오지 못했습니다.");
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((it) => it.str).join(" ") + "\n";
+    }
+    return { rows: [extractFieldsFromText(text)], rawText: text };
+  }
+  async function parseExcelFile(file) {
+    if (typeof XLSX === "undefined") throw new Error("엑셀 라이브러리를 불러오지 못했습니다.");
+    const buf = await file.arrayBuffer();
+    // cellDates 옵션은 시간대에 따라 날짜가 하루 앞뒤로 밀리는 문제가 있어 사용하지 않음.
+    // 날짜 셀은 순수 일련번호(raw)로 받아서 SSF.parse_date_code로 직접 계산 → 시간대 영향 전혀 없음.
+    const wb = XLSX.read(buf, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    if (!json.length) return { rows: [], rawText: null };
+    const keys = Object.keys(json[0]);
+    const findKey = (patterns) => keys.find((k) => patterns.some((p) => k.includes(p)));
+    const kName = findKey(["기안자", "성명", "이름", "신청자", "직원", "담당자"]);
+    const kDate = findKey(["휴가신청일", "신청일", "날짜", "일자"]);
+    const kDays = findKey(["신청 휴가수", "휴가수", "일수"]);
+    const kReason = findKey(["신청사유", "사유"]);
+    const kType = findKey(["휴가유형", "유형"]);
+    function cellToDateStr(val) {
+      // 엑셀 날짜 일련번호(예: 46206) - 시간대와 무관하게 정확한 날짜 계산
+      const num = Number(val);
+      if (val !== "" && !isNaN(num) && num > 20000 && num < 90000) {
+        const parsed = XLSX.SSF.parse_date_code(num);
+        if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+      }
+      if (val instanceof Date && !isNaN(val)) return dateToStr(val);
+      const s = String(val || "");
+      const m = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+      return "";
+    }
+    const rows = json.map((row) => {
+      const rawDays = String(row[kDays] || "").match(/[\d.]+/);
+      return {
+        name: String(row[kName] || "").replace(/\s*(주임|사원|대리|과장|차장|부장|팀장|실장|이사|대표).*$/, "").trim(),
+        date: cellToDateStr(row[kDate]),
+        days: rawDays ? Number(rawDays[0]) : 1,
+        reason: String(row[kReason] || "").trim(),
+        type: guessTypeFromText(String(row[kType] || "")),
+      };
+    });
+    return { rows, rawText: JSON.stringify(json, null, 2) };
+  }
+
+  function dateGroupHtml(extraClass, y, m, d) {
+    return `<div class="date-group ${extraClass || ""}">
+      <input type="text" inputmode="numeric" maxlength="4" class="dg-y" placeholder="YYYY" value="${y || ""}" />
+      <span class="dg-sep">-</span>
+      <input type="text" inputmode="numeric" maxlength="2" class="dg-m" placeholder="MM" value="${m || ""}" />
+      <span class="dg-sep">-</span>
+      <input type="text" inputmode="numeric" maxlength="2" class="dg-d" placeholder="DD" value="${d || ""}" />
+    </div>`;
+  }
+  function wireDateGroup(groupEl) {
+    if (!groupEl) return;
+    const y = groupEl.querySelector(".dg-y"), m = groupEl.querySelector(".dg-m"), d = groupEl.querySelector(".dg-d");
+    y.addEventListener("input", () => { y.value = y.value.replace(/\D/g, "").slice(0, 4); if (y.value.length === 4) m.focus(); });
+    m.addEventListener("input", () => { m.value = m.value.replace(/\D/g, "").slice(0, 2); if (m.value.length === 2) d.focus(); });
+    d.addEventListener("input", () => { d.value = d.value.replace(/\D/g, "").slice(0, 2); });
+    m.addEventListener("keydown", (e) => { if (e.key === "Backspace" && m.value === "") y.focus(); });
+    d.addEventListener("keydown", (e) => { if (e.key === "Backspace" && d.value === "") m.focus(); });
+    [y, m, d].forEach((el) => el.addEventListener("blur", () => {
+      if (m.value && m.value.length === 1) m.value = m.value.padStart(2, "0");
+      if (d.value && d.value.length === 1) d.value = d.value.padStart(2, "0");
+    }));
+  }
+  function getDateGroupValue(groupEl) {
+    if (!groupEl) return null;
+    const y = groupEl.querySelector(".dg-y").value;
+    let m = groupEl.querySelector(".dg-m").value, d = groupEl.querySelector(".dg-d").value;
+    if (y.length !== 4 || !m || !d) return null;
+    m = m.padStart(2, "0"); d = d.padStart(2, "0");
+    if (Number(m) < 1 || Number(m) > 12 || Number(d) < 1 || Number(d) > 31) return null;
+    return `${y}-${m}-${d}`;
+  }
+
+  function calcLeave(hireDate, baseDate) {
+    const anniversary1 = addYears(hireDate, 1);
+    const jan1ThisYear = new Date(baseDate.getFullYear(), 0, 1);
+    if (anniversary1 > baseDate) {
+      const monthsWorked = fullMonthsBetween(hireDate, baseDate);
+      const monthlyLeave = Math.min(11, monthsWorked);
+      const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
+      const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+      const proRated = round1((15 * daysInHireYear) / 365);
+      return { statusKey: "a", statusLabel: "입사 1년 미만", granted: monthlyLeave, anniversary: anniversary1, proRated,
+        detail: `개근 가정 시 월차 ${monthlyLeave}일 발생(최대 11일) · 비례연차 ${proRated}일은 1주년(${fmt(anniversary1)})에 지급 예정` };
+    }
+    if (anniversary1 <= jan1ThisYear) {
+      const serviceYears = fullYearsBetween(hireDate, jan1ThisYear);
+      const annual = annualFormula(Math.max(1, serviceYears));
+      return { statusKey: "b", statusLabel: "정상 편입", granted: annual, anniversary: null, proRated: 0,
+        detail: `${fmt(jan1ThisYear)} 기준 근속 ${serviceYears}년차 → 연차 ${annual}일 일괄 발생` };
+    }
+    const monthsWorked = fullMonthsBetween(hireDate, anniversary1);
+    const monthlyLeave = Math.min(11, monthsWorked);
+    const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
+    const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+    const proRated = round1((15 * daysInHireYear) / 365);
+    return { statusKey: "c", statusLabel: "올해 1주년 도래", granted: roundUp(monthlyLeave + proRated), anniversary: anniversary1, proRated,
+      detail: `월차 ${monthlyLeave}일 + 비례연차 ${proRated}일(1주년 ${fmt(anniversary1)} 지급) · 내년 1/1부터 정식 편입` };
+  }
+
+  function computeResignSettlement(active) {
+    const hire = parseDate(active.hireDate);
+    const resign = parseDate(active.resignDate);
+    const methodA = cumulativeAnniversary(hire, resign);
+    const methodB = cumulativeFiscal(hire, resign);
+    const chosen = methodA.total >= methodB.total ? "A" : "B";
+    const grantedAnnual = Math.max(methodA.total, methodB.total);
+    const usageLog = active.usageLog || [];
+    const usedAnnual = round1(usageLog.filter((u) => u.type === "annual").reduce((s, u) => s + (Number(u.days) || 0), 0));
+    const usedComp = round1(usageLog.filter((u) => u.type === "comp").reduce((s, u) => s + (Number(u.days) || 0), 0));
+    const compGranted = Number(active.compGranted) || 0;
+    const remainingAnnual = round1(grantedAnnual - usedAnnual);
+    // 촉진 대상 자동 추정: "1·2차 촉구를 매년 적법하게 완료했다"는 가정 하에,
+    // 이미 만료된(완성된) 사이클의 발생분은 촉진 대상으로 보고, 퇴사일이 포함된 마지막(아직 미만료) 사이클은 제외
+    const chosenCompletedTotal = chosen === "A" ? methodA.completedTotal : methodB.completedTotal;
+    const autoPromoted = round1(Math.min(chosenCompletedTotal, remainingAnnual));
+    const promotedDays = active.promotedDaysOverride != null ? Number(active.promotedDaysOverride) : autoPromoted;
+    const payableAnnual = Math.max(0, round1(remainingAnnual - promotedDays));
+    return {
+      methodA, methodB, chosen, grantedAnnual,
+      usedAnnual, remainingAnnual,
+      autoPromoted, promotedDays, payableAnnual,
+      compGranted, usedComp, remainingComp: round1(compGranted - usedComp),
+    };
+  }
+
+  function render() {
+    const root = document.getElementById("leave-app");
+    root.innerHTML = `<div class="loading-msg">대시보드를 불러오는 중…</div>`;
+
+    let roster = [];
+    let leaveLog = [];
+    let grantLog = [];
+    let resignations = [];
+    let editingId = null;
+    let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    let currentPage = "home";
+    let selectedStat = null;
+    let docPreviewRows = null;
+    let resignActive = null; // 현재 작업 중인(아직 저장 전) 퇴사 정산 초안
+    let resignDocPreviewRows = null;
+    let resignDocParseError = null;
+    let resignDocRawText = null;
+    let docParseError = null;
+    let docStatusMessage = null;
+    let docRawText = null;
+
+    async function load() {
+      if (fbDb) {
+        // 실시간 동기화: 다른 사용자의 변경도 자동으로 반영됨
+        fbDb.ref("roster").on("value", (snap) => { roster = objToArr(snap.val()); paint(); });
+        fbDb.ref("logs").on("value", (snap) => { leaveLog = objToArr(snap.val()); paint(); });
+        fbDb.ref("grants").on("value", (snap) => { grantLog = objToArr(snap.val()); paint(); });
+        fbDb.ref("resignations").on("value", (snap) => { resignations = objToArr(snap.val()); paint(); });
+
+        // 최초 1회: Firebase가 비어있고 이 브라우저에 기존 로컬 데이터가 있으면 업로드해서 이어받기
+        fbDb.ref("roster").once("value").then((snap) => {
+          if (!snap.val()) {
+            try {
+              const rawV2 = localStorage.getItem(ROSTER_KEY);
+              const localRoster = rawV2 ? JSON.parse(rawV2) : [];
+              if (localRoster.length) {
+                fbDb.ref("roster").set(arrToObj(localRoster));
+                const rawLog = localStorage.getItem(LOG_KEY);
+                const localLog = rawLog ? JSON.parse(rawLog) : [];
+                if (localLog.length) fbDb.ref("logs").set(arrToObj(localLog));
+              }
+            } catch (e) { /* 무시 */ }
+          }
+        });
+
+        // 기존 방식(직원별 고정 "대체휴가 발생" 숫자)으로 입력된 데이터를 발생 내역(사유: 기존 데이터 이전)으로 1회 변환
+        Promise.all([fbDb.ref("roster").once("value"), fbDb.ref("grants").once("value")]).then(([rSnap, gSnap]) => {
+          if (gSnap.val()) return; // 이미 발생 내역이 있으면 건너뜀
+          const rArr = objToArr(rSnap.val());
+          const toMigrate = rArr.filter((r) => Number(r.compGranted) > 0);
+          if (!toMigrate.length) return;
+          const grants = {};
+          const clearedRoster = {};
+          toMigrate.forEach((r) => {
+            const gid = genId();
+            grants[gid] = { id: gid, empId: r.id, date: todayLocalStr(), days: Number(r.compGranted), reason: "기존 데이터 이전" };
+          });
+          rArr.forEach((r) => { clearedRoster[r.id] = { ...r, compGranted: 0 }; });
+          fbDb.ref("grants").set(grants);
+          fbDb.ref("roster").set(clearedRoster);
+        });
+
+        startAutoRefresh();
+        return;
+      }
+
+      // Firebase 연결 실패 시: 이 브라우저에만 저장되는 기존 방식으로 대체
+      try {
+        const rawLog = localStorage.getItem(LOG_KEY);
+        leaveLog = rawLog ? JSON.parse(rawLog) : [];
+      } catch (e) { leaveLog = []; }
+      try {
+        const rawGrant = localStorage.getItem(GRANT_KEY);
+        grantLog = rawGrant ? JSON.parse(rawGrant) : [];
+      } catch (e) { grantLog = []; }
+      try {
+        const rawResign = localStorage.getItem(RESIGN_KEY);
+        resignations = rawResign ? JSON.parse(rawResign) : [];
+      } catch (e) { resignations = []; }
+      try {
+        const rawV2 = localStorage.getItem(ROSTER_KEY);
+        if (rawV2) {
+          roster = JSON.parse(rawV2);
+        } else {
+          const rawV1 = localStorage.getItem(ROSTER_KEY_V1);
+          const v1 = rawV1 ? JSON.parse(rawV1) : [];
+          roster = v1.map((r) => {
+            const id = genId();
+            const usedNum = Number(r.used) || 0;
+            if (usedNum > 0) leaveLog.push({ id: genId(), empId: id, date: todayLocalStr(), type: "annual", days: usedNum });
+            return { id, name: r.name || "", hireDate: r.hireDate, compGranted: 0 };
+          });
+          if (roster.length) { saveRoster(); saveLog(); }
+        }
+        // 기존 compGranted 값을 발생 내역으로 1회 변환
+        if (!grantLog.length) {
+          const toMigrate = roster.filter((r) => Number(r.compGranted) > 0);
+          if (toMigrate.length) {
+            toMigrate.forEach((r) => { grantLog.push({ id: genId(), empId: r.id, date: todayLocalStr(), days: Number(r.compGranted), reason: "기존 데이터 이전" }); r.compGranted = 0; });
+            saveRoster(); saveGrant();
+          }
+        }
+      } catch (e) { roster = []; }
+      paint();
+      startAutoRefresh();
+    }
+
+    async function saveRoster() {
+      if (fbDb) { try { await fbDb.ref("roster").set(arrToObj(roster)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch (e) { console.error("저장 실패", e); }
+    }
+    async function saveLog() {
+      if (fbDb) { try { await fbDb.ref("logs").set(arrToObj(leaveLog)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(LOG_KEY, JSON.stringify(leaveLog)); } catch (e) { console.error("저장 실패", e); }
+    }
+    async function saveGrant() {
+      if (fbDb) { try { await fbDb.ref("grants").set(arrToObj(grantLog)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(GRANT_KEY, JSON.stringify(grantLog)); } catch (e) { console.error("저장 실패", e); }
+    }
+    async function saveResign() {
+      if (fbDb) { try { await fbDb.ref("resignations").set(arrToObj(resignations)); } catch (e) { console.error("Firebase 저장 실패", e); } return; }
+      try { localStorage.setItem(RESIGN_KEY, JSON.stringify(resignations)); } catch (e) { console.error("저장 실패", e); }
+    }
+
+    function startAutoRefresh() {
+      lastDateStr = todayLocalStr();
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => {
+        const cur = todayLocalStr();
+        if (cur !== lastDateStr) { lastDateStr = cur; paint(); }
+        else { const clock = document.getElementById("live-clock"); if (clock) clock.textContent = fmtWeekday(new Date()); }
+      }, 60 * 1000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          const cur = todayLocalStr();
+          if (cur !== lastDateStr) { lastDateStr = cur; paint(); }
+        }
+      });
+    }
+
+    function sumLeave(empId, type) {
+      return round1(leaveLog.filter((l) => l.empId === empId && l.type === type).reduce((s, l) => s + (Number(l.days) || 0), 0));
+    }
+    function sumGrant(empId) {
+      return round1(grantLog.filter((g) => g.empId === empId).reduce((s, g) => s + (Number(g.days) || 0), 0));
+    }
+
+    function exportExcel() {
+      if (typeof XLSX === "undefined") { alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
+      const today = new Date();
+      const summary = computeAll(today).map((c) => ({
+        "이름": c.name, "입사일": fmt(c.hireDate), "상태": c.statusLabel,
+        "연차발생": c.granted, "연차사용": c.usedAnnual, "연차잔여": c.remainingAnnual,
+        "대체휴가발생": c.compGranted, "대체휴가사용": c.compUsed, "대체휴가잔여": c.compRemaining,
+      }));
+      const logRows = leaveLog
+        .slice()
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+        .map((l) => {
+          const emp = roster.find((r) => r.id === l.empId);
+          return { "이름": emp ? emp.name : "(삭제된 직원)", "날짜": l.date, "유형": l.type === "annual" ? "연차" : "대체휴가", "일수": l.days, "사유": l.reason || "" };
+        });
+      const grantRows = grantLog
+        .slice()
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+        .map((g) => {
+          const emp = roster.find((r) => r.id === g.empId);
+          return { "이름": emp ? emp.name : "(삭제된 직원)", "날짜": g.date, "일수": g.days, "사유": g.reason || "" };
+        });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "직원현황");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logRows), "휴가사용내역");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(grantRows), "대체휴가발생내역");
+      XLSX.writeFile(wb, `연차현황_${todayLocalStr()}.xlsx`);
+    }
+
+    function computeAll(today) {
+      return roster.map((r) => {
+        const hireDate = parseDate(r.hireDate);
+        const result = calcLeave(hireDate, today);
+        const usedAnnual = sumLeave(r.id, "annual");
+        const compGranted = sumGrant(r.id);
+        const compUsed = sumLeave(r.id, "comp");
+        return {
+          id: r.id, name: r.name || "-", hireDate, usedAnnual,
+          remainingAnnual: round1(result.granted - usedAnnual),
+          compGranted, compUsed, compRemaining: round1(compGranted - compUsed),
+          ...result,
+        };
+      });
+    }
+
+    function paint() {
+      const today = new Date();
+      const computed = computeAll(today).filter((c) => c.hireDate);
+
+      const countA = computed.filter((c) => c.statusKey === "a").length;
+      const countB = computed.filter((c) => c.statusKey === "b").length;
+      const countC = computed.filter((c) => c.statusKey === "c").length;
+
+
+      const upcoming = computed
+        .filter((c) => c.anniversary && c.anniversary >= today)
+        .map((c) => ({ ...c, dday: daysBetween(today, c.anniversary) }))
+        .filter((c) => c.dday <= 90)
+        .sort((a, b) => a.dday - b.dday);
+
+      const empOptions = roster.map((r) => `<option value="${r.id}">${escapeHtml(r.name || "(이름없음)")}</option>`).join("");
+      function empOptionsWithSelected(selectedId, unmatchedName) {
+        const opts = roster.map((r) => `<option value="${r.id}" ${r.id === selectedId ? "selected" : ""}>${escapeHtml(r.name || "(이름없음)")}</option>`).join("");
+        const unmatched = !selectedId && unmatchedName ? `<option value="" selected>⚠ "${escapeHtml(unmatchedName)}" 일치하는 직원 없음</option>` : "";
+        return unmatched + opts || `<option value="">등록된 직원 없음</option>`;
+      }
+
+      const rows = computed
+        .sort((a, b) => a.hireDate - b.hireDate)
+        .map((c) => {
+          if (c.id === editingId) {
+            const y = c.hireDate.getFullYear(), m = String(c.hireDate.getMonth() + 1).padStart(2, "0"), d = String(c.hireDate.getDate()).padStart(2, "0");
+            return `
+          <tr class="editing-row">
+            <td><input type="text" class="edit-name" value="${escapeHtml(c.name)}" /></td>
+            <td>${dateGroupHtml("edit-hire", y, m, d)}</td>
+            <td><span class="status-pill status-${c.statusKey}">${c.statusLabel}</span></td>
+            <td class="num">${c.granted}일</td>
+            <td class="num">${c.usedAnnual}일</td>
+            <td class="num">${c.remainingAnnual}일</td>
+            <td class="num">${c.compGranted}일</td>
+            <td class="num">${c.compUsed}일</td>
+            <td class="num">${c.compRemaining}일</td>
+            <td class="detail">저장하면 반영됩니다</td>
+            <td><button class="save-btn" data-id="${c.id}">저장</button><button class="cancel-btn" data-id="${c.id}">취소</button></td>
+          </tr>`;
+          }
+          return `
+          <tr>
+            <td>${escapeHtml(c.name)}</td>
+            <td>${fmt(c.hireDate)}</td>
+            <td><span class="status-pill status-${c.statusKey}">${c.statusLabel}</span></td>
+            <td class="num">${c.granted}일</td>
+            <td class="num">${c.usedAnnual}일</td>
+            <td class="num">${c.remainingAnnual}일</td>
+            <td class="num">${c.compGranted}일</td>
+            <td class="num">${c.compUsed}일</td>
+            <td class="num">${c.compRemaining}일</td>
+            <td class="detail">${c.detail}</td>
+            <td><button class="edit-btn" data-id="${c.id}">수정</button><button class="del-btn" data-id="${c.id}">삭제</button></td>
+          </tr>`;
+        })
+        .join("");
+
+      const upcomingHtml = upcoming.length
+        ? upcoming.map((u) => `
+          <div class="upcoming-item">
+            <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${fmt(u.anniversary)} 1주년 · 비례연차 ${roundUp(u.proRated)}일 예정</div></div>
+            <span class="dday ${u.dday <= 14 ? "urgent" : ""}">${u.dday === 0 ? "오늘" : "D-" + u.dday}</span>
+          </div>`).join("")
+        : `<div class="empty-mini">90일 이내 비례연차 지급 예정자가 없습니다.</div>`;
+
+      const recentLogs = leaveLog.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
+      const logsHtml = recentLogs.length
+        ? recentLogs.map((l) => {
+            const emp = roster.find((r) => r.id === l.empId);
+            return `
+          <div class="log-item">
+            <div><span class="log-type ${l.type}">${l.type === "annual" ? "연차" : "대체"}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${l.date} · ${l.days}일${l.reason ? ` · <span class="log-reason">${escapeHtml(l.reason)}</span>` : ""}</div>
+            <button class="log-del" data-id="${l.id}">삭제</button>
+          </div>`;
+          }).join("")
+        : `<div class="empty-mini">등록된 휴가 사용 내역이 없습니다.</div>`;
+
+      const recentGrants = grantLog.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
+      const grantsHtml = recentGrants.length
+        ? recentGrants.map((g) => {
+            const emp = roster.find((r) => r.id === g.empId);
+            return `
+          <div class="log-item">
+            <div><span class="log-type comp">발생</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${g.date} · ${g.days}일${g.reason ? ` · <span class="log-reason">${escapeHtml(g.reason)}</span>` : ""}</div>
+            <button class="grant-del" data-id="${g.id}">삭제</button>
+          </div>`;
+          }).join("")
+        : `<div class="empty-mini">등록된 대체휴가 발생 내역이 없습니다.</div>`;
+
+      // 통계 카드 클릭 시 보여줄 상세 목록
+      const todayStr = todayLocalStr();
+      const statGroups = {
+        total: computed,
+        a: computed.filter((c) => c.statusKey === "a"),
+        b: computed.filter((c) => c.statusKey === "b"),
+        c: computed.filter((c) => c.statusKey === "c"),
+      };
+      const statLabels = { total: "전체 등록 인원", a: "입사 1년 미만", b: "정상 편입", c: "올해 1주년 도래" };
+      let breakdownHtml = "";
+      if (selectedStat && statGroups[selectedStat]) {
+        const list = statGroups[selectedStat];
+        breakdownHtml = `
+        <div class="card breakdown-card">
+          <h2>${statLabels[selectedStat]} 상세 <span class="count-badge">${list.length}명</span> <button class="breakdown-close" id="breakdown-close">닫기 ✕</button></h2>
+          ${list.length ? list.map((c) => `
+            <div class="upcoming-item">
+              <div><div class="name">${escapeHtml(c.name)}</div><div class="meta">${c.detail}</div></div>
+              <span class="status-pill status-${c.statusKey}">${c.statusLabel}</span>
+            </div>`).join("") : `<div class="empty-mini">해당하는 직원이 없습니다.</div>`}
+        </div>`;
+      }
+
+      // 전체 페이지 요약: 오늘 휴가, 이번주 예정, 최근 등록 내역(사용+발생 통합)
+      // 연속 휴가(예: 금요일부터 2일)를 주말을 제외한 실제 날짜들로 펼쳐서 하루 단위로 관리
+      const expandedLeaveEntries = [];
+      leaveLog.forEach((l) => {
+        expandToBusinessDays(l.date, l.days).forEach((sp) => {
+          expandedLeaveEntries.push({ ...l, date: sp.date, days: sp.portion, spanStart: l.date, emp: roster.find((r) => r.id === l.empId) });
+        });
+      });
+
+      const todayOffList = expandedLeaveEntries.filter((l) => l.date === todayStr);
+      const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekList = expandedLeaveEntries
+        .filter((l) => { const d = parseDate(l.date); return d > today && d <= weekEnd; })
+        .sort((a, b) => (a.date < b.date ? -1 : 1));
+      const recentActivity = [
+        ...leaveLog.map((l) => ({ ...l, kind: l.type })),
+        ...grantLog.map((g) => ({ ...g, kind: "grant" })),
+      ].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 6);
+
+      const kindLabel = { annual: "연차 사용", comp: "대체휴가 사용", grant: "대체휴가 발생" };
+      const kindClass = { annual: "annual", comp: "comp", grant: "comp" };
+
+      const todayOffHtml = todayOffList.length
+        ? todayOffList.map((l) => `<span class="cal-chip ${l.type}" style="display:inline-block;margin:0 4px 4px 0;">${escapeHtml(l.emp ? l.emp.name : "?")} · ${l.type === "annual" ? "연차" : "대체휴가"}</span>`).join("")
+        : `<div class="empty-mini">오늘 휴가/대체휴가 사용자가 없습니다.</div>`;
+
+      const weekHtml = weekList.length
+        ? weekList.map((l) => {
+            const emp = l.emp;
+            return `<div class="upcoming-item"><div><div class="name">${escapeHtml(emp ? emp.name : "?")}</div><div class="meta">${l.date} · ${l.type === "annual" ? "연차" : "대체휴가"} ${l.days}일${l.reason ? " · " + escapeHtml(l.reason) : ""}</div></div></div>`;
+          }).join("")
+        : `<div class="empty-mini">앞으로 7일 이내 예정된 휴가가 없습니다.</div>`;
+
+      const recentActivityHtml = recentActivity.length
+        ? recentActivity.map((item) => {
+            const emp = roster.find((r) => r.id === item.empId);
+            return `<div class="log-item"><div><span class="log-type ${kindClass[item.kind]}">${kindLabel[item.kind]}</span>${escapeHtml(emp ? emp.name : "(삭제됨)")} · ${item.date} · ${item.days}일${item.reason ? ` · <span class="log-reason">${escapeHtml(item.reason)}</span>` : ""}</div></div>`;
+          }).join("")
+        : `<div class="empty-mini">등록된 활동 내역이 없습니다.</div>`;
+
+
+      // 캘린더
+      const y = calMonth.getFullYear(), m = calMonth.getMonth();
+      const firstDow = new Date(y, m, 1).getDay();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const logsByDate = {};
+      expandedLeaveEntries.forEach((l) => { (logsByDate[l.date] = logsByDate[l.date] || []).push(l); });
+
+      let calCells = "";
+      for (let i = 0; i < firstDow; i++) calCells += `<div class="cal-cell empty"></div>`;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const entries = logsByDate[dStr] || [];
+        const shown = entries.slice(0, 3);
+        const chips = shown.map((l) => {
+          const emp = roster.find((r) => r.id === l.empId);
+          return `<span class="cal-chip ${l.type}">${escapeHtml(emp ? emp.name : "?")}</span>`;
+        }).join("");
+        const more = entries.length > 3 ? `<span class="cal-more">+${entries.length - 3}명</span>` : "";
+        calCells += `<div class="cal-cell ${dStr === todayStr ? "today" : ""}"><div class="cal-daynum">${day}</div>${chips}${more}</div>`;
+      }
+
+      // 전자결재 문서 업로드 미리보기
+      const rawTextViewer = docRawText
+        ? `<details style="margin-top:12px;"><summary style="cursor:pointer; font-size:12px; color:var(--navy); font-weight:700;">🔍 인식된 원문 보기 (인식이 틀렸을 때 이 내용을 캡처해서 공유해주세요)</summary>
+            <pre style="white-space:pre-wrap; font-size:11px; color:var(--gray); background:var(--cream); padding:10px; border-radius:8px; margin-top:8px; max-height:220px; overflow:auto;">${escapeHtml(docRawText)}</pre>
+          </details>`
+        : "";
+      let docPreviewHtml = "";
+      if (docParseError) {
+        docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--red);">⚠ ${escapeHtml(docParseError)}</div>${rawTextViewer}</div>`;
+      } else if (docStatusMessage) {
+        docPreviewHtml = `<div class="card" style="margin-bottom:16px;"><div class="empty-mini" style="color:var(--teal); font-weight:700;">✓ ${escapeHtml(docStatusMessage)}</div></div>`;
+      } else if (docPreviewRows && docPreviewRows.length) {
+        const seenInBatch = {};
+        docPreviewHtml = `
+        <div class="card" style="margin-bottom:16px;">
+          <h2>업로드 내용 확인 <span class="count-badge">${docPreviewRows.length}건 인식됨</span></h2>
+          <div class="table-scroll">
+            <table style="min-width:800px;">
+              <thead><tr><th>직원</th><th>날짜</th><th>유형</th><th>일수</th><th>사유</th><th></th></tr></thead>
+              <tbody>
+                ${docPreviewRows.map((r, i) => {
+                  const matched = roster.find((emp) => emp.name === r.name);
+                  const [dy, dm, dd] = (r.date || "").split("-");
+                  const empId = matched ? matched.id : "";
+                  const dupKey = empId + "|" + r.date;
+                  const existsInLog = empId && leaveLog.some((l) => l.empId === empId && l.date === r.date);
+                  const dupInBatch = empId && seenInBatch[dupKey];
+                  if (empId) seenInBatch[dupKey] = true;
+                  const isDup = existsInLog || dupInBatch;
+                  const warnText = existsInLog ? "⚠ 이미 등록된 날짜와 중복" : dupInBatch ? "⚠ 업로드 파일 내에서 중복" : "";
+                  return `
+                  <tr class="doc-preview-row ${isDup ? "dup-row" : ""}" data-idx="${i}">
+                    <td>
+                      <select class="dp-emp">${empOptionsWithSelected(matched ? matched.id : "", r.name)}</select>
+                      ${warnText ? `<div class="dup-warning">${warnText}</div>` : ""}
+                    </td>
+                    <td>${dateGroupHtml("dp-date", dy, dm, dd)}</td>
+                    <td><select class="dp-type"><option value="annual" ${r.type === "annual" ? "selected" : ""}>연차</option><option value="comp" ${r.type === "comp" ? "selected" : ""}>대체휴가</option></select></td>
+                    <td><input type="number" class="dp-days" min="0.5" step="0.5" value="${r.days}" style="width:64px;" /></td>
+                    <td><input type="text" class="dp-reason" value="${escapeHtml(r.reason)}" style="width:160px;" /></td>
+                    <td><button class="dp-remove" data-idx="${i}">제외</button></td>
+                  </tr>`;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn secondary" id="doc-confirm-btn" style="width:auto;">전체 등록</button>
+            <button class="cancel-btn" id="doc-discard-btn" style="padding:10px 16px;">취소</button>
+          </div>
+          ${rawTextViewer}
+          <div class="footnote" style="margin:14px 0 0; padding-top:10px;">
+            ※ 자동 인식은 참고용입니다. 이름이 매칭되지 않았거나 날짜·일수가 잘못 읽힌 경우 직접 수정한 뒤 등록해주세요.
+          </div>
+        </div>`;
+      }
+
+      // 퇴사자 정산 계산 및 업로드 미리보기
+      const resignSettlement = resignActive ? computeResignSettlement(resignActive) : null;
+      const resignUsageHtml = resignActive && resignActive.usageLog.length
+        ? resignActive.usageLog.map((u, i) => `
+          <div class="log-item">
+            <div><span class="log-type ${u.type}">${u.type === "annual" ? "연차" : "대체휴가"}</span>${u.date} · ${u.days}일${u.reason ? ` · <span class="log-reason">${escapeHtml(u.reason)}</span>` : ""}</div>
+            <button class="resign-usage-del" data-idx="${i}">삭제</button>
+          </div>`).join("")
+        : `<div class="empty-mini">등록된 사용 내역이 없습니다.</div>`;
+
+      const resignRawTextViewer = resignDocRawText
+        ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:12px; color:var(--navy); font-weight:700;">🔍 인식된 원문 보기</summary>
+            <pre style="white-space:pre-wrap; font-size:11px; color:var(--gray); background:var(--cream); padding:10px; border-radius:8px; margin-top:8px; max-height:220px; overflow:auto;">${escapeHtml(resignDocRawText)}</pre>
+          </details>`
+        : "";
+      let resignDocPreviewHtml = "";
+      if (resignDocParseError) {
+        resignDocPreviewHtml = `<div class="empty-mini" style="color:var(--red); margin-top:10px;">⚠ ${escapeHtml(resignDocParseError)}</div>${resignRawTextViewer}`;
+      } else if (resignDocPreviewRows && resignDocPreviewRows.length) {
+        resignDocPreviewHtml = `
+        <div class="table-scroll" style="margin-top:12px;">
+          <table style="min-width:600px;">
+            <thead><tr><th>날짜</th><th>유형</th><th>일수</th><th>사유</th><th></th></tr></thead>
+            <tbody>
+              ${resignDocPreviewRows.map((r, i) => {
+                const [dy, dm, dd] = (r.date || "").split("-");
+                return `
+                <tr class="resign-doc-row" data-idx="${i}">
+                  <td>${dateGroupHtml("rdp-date", dy, dm, dd)}</td>
+                  <td><select class="rdp-type"><option value="annual" ${r.type === "annual" ? "selected" : ""}>연차</option><option value="comp" ${r.type === "comp" ? "selected" : ""}>대체휴가</option></select></td>
+                  <td><input type="number" class="rdp-days" min="0.5" step="0.5" value="${r.days}" style="width:64px;" /></td>
+                  <td><input type="text" class="rdp-reason" value="${escapeHtml(r.reason)}" style="width:140px;" /></td>
+                  <td><button class="rdp-remove" data-idx="${i}">제외</button></td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn secondary" id="resign-doc-confirm-btn" style="width:auto; margin-top:10px;">이 내역들 추가</button>
+        <button class="cancel-btn" id="resign-doc-discard-btn" style="padding:9px 14px; margin-top:10px;">취소</button>
+        <div style="margin-top:8px;">${resignRawTextViewer}</div>`;
+      }
+
+      const resignListHtml = resignations.length
+        ? resignations.map((r) => {
+            const s = computeResignSettlement(r);
+            return `
+          <div class="log-item" style="align-items:flex-start;">
+            <div>
+              <div class="name">${escapeHtml(r.name || "(이름없음)")}</div>
+              <div class="meta">${r.hireDate} ~ ${r.resignDate} · 발생 ${s.grantedAnnual}일(${s.chosen === "A" ? "입사일기준" : "회계연도기준"}) · 연차잔여 ${s.remainingAnnual}일(촉진면제 ${s.promotedDays}일 → 지급대상 ${s.payableAnnual}일) · 대체휴가잔여 ${s.remainingComp}일</div>
+            </div>
+            <button class="resign-del" data-id="${r.id}">삭제</button>
+          </div>`;
+          }).join("")
+        : `<div class="empty-mini">저장된 퇴사자 정산 내역이 없습니다.</div>`;
+
+      const pages = {
+        home: `
+        <div class="stat-grid">
+          <div class="stat-card accent-total clickable" data-stat="total"><div class="n">${computed.length}</div><div class="l">전체 등록 인원</div></div>
+          <div class="stat-card accent-a clickable" data-stat="a"><div class="n">${countA}</div><div class="l">입사 1년 미만</div></div>
+          <div class="stat-card accent-b clickable" data-stat="b"><div class="n">${countB}</div><div class="l">정상 편입</div></div>
+          <div class="stat-card accent-c clickable" data-stat="c"><div class="n">${countC}</div><div class="l">올해 1주년 도래</div></div>
+        </div>
+        ${breakdownHtml}
+        <div class="card">
+          <h2>다가오는 비례연차 지급 예정 <span class="count-badge">90일 이내 ${upcoming.length}명</span></h2>
+          ${upcomingHtml}
+        </div>
+        <div class="card">
+          <h2>전체 현황 요약</h2>
+          <div class="summary-block">
+            <div class="summary-label">오늘 휴가 중</div>
+            <div>${todayOffHtml}</div>
+          </div>
+          <div class="summary-block">
+            <div class="summary-label">앞으로 7일 이내 예정</div>
+            ${weekHtml}
+          </div>
+          <div class="summary-block">
+            <div class="summary-label">최근 등록 내역 (사용·발생 통합)</div>
+            ${recentActivityHtml}
+          </div>
+        </div>`,
+
+        employees: `
+        <div class="card" style="margin-bottom:16px;">
+          <h2>직원 추가</h2>
+          <div class="form-grid">
+            <div class="full"><label>이름</label><input id="in-name" type="text" placeholder="예: OOO" /></div>
+            <div class="full"><label>입사일</label>${dateGroupHtml("in-hire")}</div>
+          </div>
+          <button class="btn" id="add-btn">직원 추가</button>
+        </div>
+        <div class="table-card">
+          <div class="table-head">
+            <h2 style="margin:0;">전체 직원 현황</h2>
+            <span class="count-badge">총 ${computed.length}명</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr>
+                <th>이름</th><th>입사일</th><th>상태</th><th>연차발생</th><th>연차사용</th><th>연차잔여</th>
+                <th>대체발생</th><th>대체사용</th><th>대체잔여</th><th>산출 근거</th><th></th>
+              </tr></thead>
+              <tbody>${rows || `<tr><td colspan="11" class="empty">등록된 직원이 없습니다.</td></tr>`}</tbody>
+            </table>
+          </div>
+          <div class="footnote">
+            ※ 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 사내 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
+            연차·대체휴가 사용일수는 "휴가 등록" 탭에 입력한 내역의 합계로 자동 계산됩니다. 육아휴직·무급휴직 등 근속기간 산입 제외 사유는 반영되어 있지 않습니다.
+            최종 지급 연차일수는 인사운영팀 확인이 필요합니다.
+          </div>
+        </div>`,
+
+        leave: `
+        <div class="card" style="margin-bottom:16px;">
+          <h2>전자결재 문서로 자동 등록 <span class="count-badge">PDF / Excel</span></h2>
+          <p class="sub" style="margin-bottom:12px;">휴가신청서 PDF 또는 신청 내역이 담긴 엑셀 파일을 올리면 직원·날짜·유형·일수·사유를 자동으로 읽어와요. 등록 전에 내용을 확인하고 고칠 수 있습니다.</p>
+          <div class="form-grid">
+            <div class="full">
+              <input id="doc-upload" type="file" accept=".pdf,.xlsx,.xls" />
+            </div>
+          </div>
+          <button class="btn secondary" id="doc-parse-btn" style="margin-top:10px;">파일 분석하기</button>
+        </div>
+        ${docPreviewHtml}
+        <div class="grid-2">
+          <div class="card">
+            <h2>휴가 사용 등록</h2>
+            <div class="form-grid">
+              <div class="full"><label>직원</label><select id="log-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
+              <div><label>날짜</label>${dateGroupHtml("log-date")}</div>
+              <div><label>유형</label><select id="log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
+              <div><label>사용 일수</label><input id="log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="log-reason" type="text" placeholder="예: 개인 사정, 가족 여행 등" /></div>
+            </div>
+            <button class="btn secondary" id="log-add-btn">휴가 등록</button>
+          </div>
+          <div class="card">
+            <h2>최근 휴가 사용 내역</h2>
+            ${logsHtml}
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h2>대체휴가 발생 등록</h2>
+            <div class="form-grid">
+              <div class="full"><label>직원</label><select id="grant-emp">${empOptions || '<option value="">등록된 직원 없음</option>'}</select></div>
+              <div><label>날짜</label>${dateGroupHtml("grant-date")}</div>
+              <div><label>발생 일수</label><input id="grant-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="grant-reason" type="text" placeholder="예: 휴일 특근 대체, 야간근무 대체 등" /></div>
+            </div>
+            <button class="btn secondary" id="grant-add-btn">대체휴가 발생 등록</button>
+          </div>
+          <div class="card">
+            <h2>최근 대체휴가 발생 내역</h2>
+            ${grantsHtml}
+          </div>
+        </div>`,
+
+        calendar: `
+        <div class="cal-card" style="margin-bottom:0;">
+          <div class="cal-head">
+            <h2 style="margin:0;">휴가 캘린더</h2>
+            <div class="cal-nav">
+              <button id="cal-prev">‹</button>
+              <div class="cal-title">${y}년 ${m + 1}월</div>
+              <button id="cal-next">›</button>
+            </div>
+          </div>
+          <div class="cal-grid">
+            <div class="cal-dow">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div>
+            <div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow">토</div>
+            ${calCells}
+          </div>
+        </div>`,
+
+        resign: `
+        ${!resignActive ? `
+        <div class="card">
+          <h2>퇴사자 연차 정산</h2>
+          <p class="sub" style="margin-bottom:12px;">입사일·퇴사일을 입력하면 「입사일 기준」과 「회계연도 비례연차 기준」을 모두 계산해서, 근로자에게 더 유리한 쪽으로 자동 산정합니다.</p>
+          <div class="form-grid">
+            <div class="full"><label>이름</label><input id="resign-name" type="text" placeholder="예: OOO" /></div>
+            <div><label>입사일</label>${dateGroupHtml("resign-hire")}</div>
+            <div><label>퇴사일</label>${dateGroupHtml("resign-date")}</div>
+            <div class="full"><label>대체휴가 발생 개수(일)</label><input id="resign-comp" type="number" min="0" step="0.5" value="0" /></div>
+          </div>
+          <button class="btn" id="resign-start-btn">정산 시작</button>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <h2>저장된 퇴사자 정산 내역</h2>
+          ${resignListHtml}
+        </div>
+        ` : `
+        <div class="card">
+          <h2>${escapeHtml(resignActive.name || "(이름없음)")} 님 연차 정산
+            <span class="count-badge">${resignActive.hireDate} ~ ${resignActive.resignDate}</span>
+          </h2>
+          <div class="grid-2" style="margin-top:4px;">
+            <div class="card" style="background:var(--cream); border:none;">
+              <h2 style="font-size:13px;">방법 A · 입사일(개인 기념일) 기준<span class="count-badge" style="margin-left:6px;">${resignSettlement.methodA.total}일</span></h2>
+              ${resignSettlement.methodA.detail.map((d) => `<div class="upcoming-item" style="padding:6px 0;"><div class="meta">${d.label}</div><span class="num" style="font-size:12.5px;">${d.days}일</span></div>`).join("")}
+            </div>
+            <div class="card" style="background:var(--cream); border:none;">
+              <h2 style="font-size:13px;">방법 B · 회계연도(1월 1일) 기준<span class="count-badge" style="margin-left:6px;">${resignSettlement.methodB.total}일</span></h2>
+              ${resignSettlement.methodB.detail.map((d) => `<div class="upcoming-item" style="padding:6px 0;"><div class="meta">${d.label}</div><span class="num" style="font-size:12.5px;">${d.days}일</span></div>`).join("")}
+            </div>
+          </div>
+          <div class="footnote" style="margin:14px 0 0; padding-top:10px; border-top:1px dashed var(--line);">
+            ✓ 채택된 방식: <b>${resignSettlement.chosen === "A" ? "방법 A (입사일 기준)" : "방법 B (회계연도 기준)"}</b> — 총 발생 연차 <b>${resignSettlement.grantedAnnual}일</b> (더 유리한 값 자동 선택)
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h2>사용 휴가 등록</h2>
+            <div class="form-grid">
+              <div><label>날짜</label>${dateGroupHtml("resign-log-date")}</div>
+              <div><label>유형</label><select id="resign-log-type"><option value="annual">연차</option><option value="comp">대체휴가</option></select></div>
+              <div><label>일수</label><input id="resign-log-days" type="number" min="0.5" step="0.5" value="1" /></div>
+              <div class="full"><label>사유 (선택)</label><input id="resign-log-reason" type="text" placeholder="예: 개인 사정" /></div>
+            </div>
+            <button class="btn secondary" id="resign-log-add-btn">사용 내역 추가</button>
+            <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:10px;">
+              <div class="summary-label" style="margin-bottom:8px;">전자결재 문서로 일괄 등록</div>
+              <input id="resign-doc-upload" type="file" accept=".pdf,.xlsx,.xls" />
+              <button class="btn secondary" id="resign-doc-parse-btn" style="margin-top:8px;">파일 분석하기</button>
+              ${resignDocPreviewHtml}
+            </div>
+          </div>
+          <div class="card">
+            <h2>사용 내역 목록</h2>
+            ${resignUsageHtml}
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h2>최종 정산 결과</h2>
+          <div class="stat-grid">
+            <div class="stat-card accent-b"><div class="n">${resignSettlement.grantedAnnual}일</div><div class="l">연차 발생(채택값)</div></div>
+            <div class="stat-card accent-a"><div class="n">${resignSettlement.usedAnnual}일</div><div class="l">연차 사용</div></div>
+            <div class="stat-card accent-total"><div class="n">${resignSettlement.remainingAnnual}일</div><div class="l">연차 잔여(촉진 반영 전)</div></div>
+            <div class="stat-card accent-c"><div class="n">${resignSettlement.remainingComp}일</div><div class="l">대체휴가 잔여</div></div>
+          </div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="full">
+              <label>연차 사용촉진 절차로 수당 면제된 일수 <span style="color:var(--gray); font-weight:400;">(자동 추정값 — 직접 수정 가능)</span></label>
+              <input id="resign-promoted" type="number" min="0" step="0.5" value="${resignSettlement.promotedDays}" />
+              <div class="dup-warning" style="color:var(--gray); font-style:italic;">자동 추정: ${resignSettlement.autoPromoted}일 (퇴사일이 포함된 마지막 사이클은 제외 · 1·2차 촉구를 매년 적법하게 완료했다고 가정)</div>
+            </div>
+          </div>
+          <div class="upcoming-item" style="background:var(--teal-bg); border-radius:8px; padding:12px 14px; margin-top:10px; border-bottom:none;">
+            <div>
+              <div class="name" style="color:var(--teal);">최종 연차수당 지급대상</div>
+              <div class="meta">잔여 ${resignSettlement.remainingAnnual}일 − 촉진 면제 ${resignSettlement.promotedDays}일 = 지급대상 <b>${resignSettlement.payableAnnual}일</b></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn" id="resign-save-btn" style="width:auto;">정산 완료 저장</button>
+            <button class="cancel-btn" id="resign-cancel-btn" style="padding:10px 16px;">취소</button>
+          </div>
+          <div class="footnote">
+            ※ 위 계산은 근로기준법 제60조 기준 및 회계연도 비례연차 산정 방식을 기반으로 한 추정치입니다. 연차 사용촉진(제61조) 촉진 면제 자동 추정값은 "매년 1·2차 촉구를 서면으로 기한 내 적법하게 완료했다"는 가정 하에, 퇴사일이 포함된 마지막(미만료) 사이클을 제외한 이전 사이클 발생분을 기준으로 계산했습니다. 실제로 특정 연도에 촉구를 빠뜨렸거나 절차가 미비했다면 그 해분은 제외하고 직접 수정해주세요. 실제 퇴직금·연차수당 정산 전 반드시 노무사 확인을 받으시기 바랍니다.
+          </div>
+        </div>
+        `}`,
+      };
+
+      const tabs = [
+        { key: "home", label: "대시보드" },
+        { key: "employees", label: "직원 관리" },
+        { key: "leave", label: "휴가 등록" },
+        { key: "calendar", label: "휴가 캘린더" },
+        { key: "resign", label: "퇴사자 정산" },
+      ];
+      const tabNavHtml = tabs.map((t) => `<button class="tab-btn ${currentPage === t.key ? "active" : ""}" data-page="${t.key}">${t.label}</button>`).join("");
+
+      root.innerHTML = `
+        <div class="top-row">
+          <div>
+            <div class="eyebrow">HR AUTOMATION · 크림웨이브 인사운영팀</div>
+            <h1>연차 관리 대시보드</h1>
+            <p class="sub">회계연도(매년 1/1) 기준 연차 · 입사 1주년 비례연차 · 대체휴가를 함께 관리합니다.</p>
+          </div>
+          <div class="top-right">
+            <span class="sync-badge ${fbDb ? "on" : "off"}">${fbDb ? "🟢 실시간 공유 중" : "⚪ 이 브라우저에만 저장(로컬 모드)"}</span>
+            <div class="today-box">
+              <div class="label"><span class="live-dot"></span>오늘 기준 자동 계산</div>
+              <div class="date" id="live-clock">${fmtWeekday(today)}</div>
+              <div class="live">날짜가 바뀌면 자동으로 다시 계산됩니다</div>
+            </div>
+            <button class="xlsx-btn" id="xlsx-btn">⬇ 엑셀 다운로드</button>
+          </div>
+        </div>
+
+        <div class="tab-nav">${tabNavHtml}</div>
+
+        <div class="page">${pages[currentPage] || pages.home}</div>
+      `;
+
+      document.getElementById("xlsx-btn").onclick = exportExcel;
+
+      const addBtn = document.getElementById("add-btn");
+      if (addBtn) addBtn.onclick = () => {
+        const name = document.getElementById("in-name").value.trim();
+        const hireGroup = root.querySelector(".date-group.in-hire");
+        const hire = getDateGroupValue(hireGroup);
+        if (!hire) { hireGroup.querySelector(".dg-y").focus(); return; }
+        roster.push({ id: genId(), name, hireDate: hire });
+        saveRoster();
+        paint();
+      };
+
+      const logAddBtn = document.getElementById("log-add-btn");
+      if (logAddBtn) logAddBtn.onclick = () => {
+        const empId = document.getElementById("log-emp").value;
+        const dateGroup = root.querySelector(".date-group.log-date");
+        const date = getDateGroupValue(dateGroup);
+        const type = document.getElementById("log-type").value;
+        const days = Number(document.getElementById("log-days").value) || 0;
+        const reason = document.getElementById("log-reason").value.trim();
+        if (!empId) { alert("직원을 선택해주세요."); return; }
+        if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
+        if (days <= 0) { alert("사용 일수를 입력해주세요."); return; }
+        const dup = leaveLog.find((l) => l.empId === empId && l.date === date);
+        if (dup) {
+          const empName = (roster.find((r) => r.id === empId) || {}).name || "해당 직원";
+          const ok = confirm(
+            `⚠ 중복 등록 경고\n\n${empName}님은 ${date}에 이미 ${dup.type === "annual" ? "연차" : "대체휴가"} ${dup.days}일이 등록되어 있습니다.\n` +
+            `그대로 추가하면 같은 날짜에 두 건이 쌓여 잔여 연차가 이중으로 차감됩니다.\n\n` +
+            `정말 추가로 등록하시겠습니까? ("취소"를 누르면 등록되지 않습니다)`
+          );
+          if (!ok) return;
+        }
+        leaveLog.push({ id: genId(), empId, date, type, days, reason });
+        saveLog();
+        paint();
+      };
+
+      const grantAddBtn = document.getElementById("grant-add-btn");
+      if (grantAddBtn) grantAddBtn.onclick = () => {
+        const empId = document.getElementById("grant-emp").value;
+        const dateGroup = root.querySelector(".date-group.grant-date");
+        const date = getDateGroupValue(dateGroup);
+        const days = Number(document.getElementById("grant-days").value) || 0;
+        const reason = document.getElementById("grant-reason").value.trim();
+        if (!empId) { alert("직원을 선택해주세요."); return; }
+        if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
+        if (days <= 0) { alert("발생 일수를 입력해주세요."); return; }
+        grantLog.push({ id: genId(), empId, date, days, reason });
+        saveGrant();
+        paint();
+      };
+
+      root.querySelectorAll(".log-del").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          leaveLog = leaveLog.filter((l) => l.id !== id);
+          saveLog();
+          paint();
+        };
+      });
+
+      root.querySelectorAll(".grant-del").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          grantLog = grantLog.filter((g) => g.id !== id);
+          saveGrant();
+          paint();
+        };
+      });
+
+      root.querySelectorAll(".del-btn").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          roster = roster.filter((r) => r.id !== id);
+          leaveLog = leaveLog.filter((l) => l.empId !== id);
+          grantLog = grantLog.filter((g) => g.empId !== id);
+          saveRoster(); saveLog(); saveGrant();
+          paint();
+        };
+      });
+      root.querySelectorAll(".edit-btn").forEach((btn) => { btn.onclick = () => { editingId = btn.getAttribute("data-id"); paint(); }; });
+      root.querySelectorAll(".cancel-btn").forEach((btn) => { btn.onclick = () => { editingId = null; paint(); }; });
+      root.querySelectorAll(".save-btn").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          const row = btn.closest("tr");
+          const name = row.querySelector(".edit-name").value.trim();
+          const hire = getDateGroupValue(row.querySelector(".date-group.edit-hire"));
+          if (!hire) return;
+          const emp = roster.find((r) => r.id === id);
+          if (emp) { emp.name = name; emp.hireDate = hire; }
+          editingId = null;
+          saveRoster();
+          paint();
+        };
+      });
+
+      const calPrevBtn = document.getElementById("cal-prev");
+      const calNextBtn = document.getElementById("cal-next");
+      if (calPrevBtn) calPrevBtn.onclick = () => { calMonth = new Date(y, m - 1, 1); paint(); };
+      if (calNextBtn) calNextBtn.onclick = () => { calMonth = new Date(y, m + 1, 1); paint(); };
+
+      root.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.onclick = () => { currentPage = btn.getAttribute("data-page"); paint(); };
+      });
+
+      root.querySelectorAll(".stat-card.clickable").forEach((card) => {
+        card.onclick = () => {
+          const key = card.getAttribute("data-stat");
+          selectedStat = selectedStat === key ? null : key;
+          paint();
+        };
+      });
+      const breakdownCloseBtn = document.getElementById("breakdown-close");
+      if (breakdownCloseBtn) breakdownCloseBtn.onclick = (e) => { e.stopPropagation(); selectedStat = null; paint(); };
+
+      const docParseBtn = document.getElementById("doc-parse-btn");
+      if (docParseBtn) docParseBtn.onclick = async () => {
+        const fileInput = document.getElementById("doc-upload");
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) { alert("파일을 먼저 선택해주세요."); return; }
+        docParseError = null; docStatusMessage = null;
+        docParseBtn.textContent = "분석 중…";
+        docParseBtn.disabled = true;
+        try {
+          const isPdf = /\.pdf$/i.test(file.name);
+          const result = isPdf ? await parsePdfFile(file) : await parseExcelFile(file);
+          const rows = result.rows;
+          docRawText = result.rawText;
+          const valid = rows.filter((r) => r.date);
+          if (!valid.length) {
+            docParseError = "파일에서 날짜·직원 정보를 인식하지 못했습니다. 아래 '인식된 원문 보기'를 확인해주세요.";
+            docPreviewRows = null;
+          } else {
+            docPreviewRows = valid;
+          }
+        } catch (e) {
+          console.error(e);
+          docParseError = "파일을 분석하는 중 오류가 발생했습니다: " + e.message;
+          docPreviewRows = null;
+        }
+        paint();
+      };
+
+      const docDiscardBtn = document.getElementById("doc-discard-btn");
+      if (docDiscardBtn) docDiscardBtn.onclick = () => { docPreviewRows = null; docParseError = null; docStatusMessage = null; paint(); };
+
+      root.querySelectorAll(".dp-remove").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          docPreviewRows.splice(idx, 1);
+          if (!docPreviewRows.length) docPreviewRows = null;
+          paint();
+        };
+      });
+
+      // 미리보기 행의 직원/날짜를 수정할 때마다 중복 표시를 실시간으로 갱신
+      function getPreviewRowsLive() {
+        return Array.from(root.querySelectorAll(".doc-preview-row")).map((rowEl) => ({
+          rowEl,
+          empId: rowEl.querySelector(".dp-emp").value,
+          date: getDateGroupValue(rowEl.querySelector(".date-group.dp-date")),
+        }));
+      }
+      function flagDuplicates(rowsLive) {
+        const seen = {};
+        return rowsLive.map((r) => {
+          if (!r.empId || !r.date) return { ...r, isDup: false, dupReason: "" };
+          const key = r.empId + "|" + r.date;
+          const existsInLog = leaveLog.some((l) => l.empId === r.empId && l.date === r.date);
+          const dupInBatch = seen[key];
+          seen[key] = true;
+          if (existsInLog) return { ...r, isDup: true, dupReason: "⚠ 이미 등록된 날짜와 중복" };
+          if (dupInBatch) return { ...r, isDup: true, dupReason: "⚠ 업로드 파일 내에서 중복" };
+          return { ...r, isDup: false, dupReason: "" };
+        });
+      }
+      function recomputeDocDupWarnings() {
+        flagDuplicates(getPreviewRowsLive()).forEach(({ rowEl, isDup, dupReason }) => {
+          rowEl.classList.toggle("dup-row", isDup);
+          let warnEl = rowEl.querySelector(".dup-warning");
+          if (isDup) {
+            if (!warnEl) {
+              warnEl = document.createElement("div");
+              warnEl.className = "dup-warning";
+              rowEl.querySelector(".dp-emp").insertAdjacentElement("afterend", warnEl);
+            }
+            warnEl.textContent = dupReason;
+          } else if (warnEl) {
+            warnEl.remove();
+          }
+        });
+      }
+      root.querySelectorAll(".doc-preview-row").forEach((rowEl) => {
+        rowEl.querySelector(".dp-emp").addEventListener("change", recomputeDocDupWarnings);
+        rowEl.querySelectorAll(".date-group.dp-date input").forEach((inp) => {
+          inp.addEventListener("input", recomputeDocDupWarnings);
+        });
+      });
+
+      const docConfirmBtn = document.getElementById("doc-confirm-btn");
+      if (docConfirmBtn) docConfirmBtn.onclick = () => {
+        const rowEls = root.querySelectorAll(".doc-preview-row");
+        // 1) 현재 화면에 입력된 값 기준으로 등록 후보를 모두 수집
+        const candidates = [];
+        rowEls.forEach((rowEl) => {
+          const empId = rowEl.querySelector(".dp-emp").value;
+          const date = getDateGroupValue(rowEl.querySelector(".date-group.dp-date"));
+          const type = rowEl.querySelector(".dp-type").value;
+          const days = Number(rowEl.querySelector(".dp-days").value) || 0;
+          const reason = rowEl.querySelector(".dp-reason").value.trim();
+          if (empId && date && days > 0) candidates.push({ empId, date, type, days, reason });
+        });
+        const skippedNoEmp = rowEls.length - candidates.length;
+
+        // 2) 기존 등록 내역 및 업로드 항목 내부의 중복(동일 직원+동일 날짜)을 판별
+        const seen = {};
+        const toAdd = [];
+        let dupCount = 0;
+        candidates.forEach((c) => {
+          const key = c.empId + "|" + c.date;
+          const existsInLog = leaveLog.some((l) => l.empId === c.empId && l.date === c.date);
+          const dupInBatch = seen[key];
+          seen[key] = true;
+          if (existsInLog || dupInBatch) {
+            dupCount++;
+          } else {
+            toAdd.push(c);
+          }
+        });
+
+        // 3) 중복이 있으면 팝업으로 안내하고, 확인 시 중복분만 제외하고 등록
+        if (dupCount > 0) {
+          const proceed = confirm(
+            `⚠ 중복 등록 경고\n\n${dupCount}건이 이미 등록된 날짜(또는 업로드 파일 내에서 같은 직원·같은 날짜)와 중복됩니다.\n` +
+            `중복된 항목은 표에서 빨간색으로 표시되어 있습니다.\n\n` +
+            `중복 항목을 제외하고 나머지 ${toAdd.length}건만 등록할까요?\n("취소"를 누르면 아무것도 등록되지 않으니, 표에서 직접 수정 후 다시 시도해주세요)`
+          );
+          if (!proceed) return;
+        }
+
+        toAdd.forEach((c) => leaveLog.push({ id: genId(), ...c }));
+        if (toAdd.length) saveLog();
+
+        docPreviewRows = null;
+        const messages = [];
+        if (toAdd.length) messages.push(`${toAdd.length}건 등록됨`);
+        if (dupCount) messages.push(`중복 ${dupCount}건 제외`);
+        if (skippedNoEmp) messages.push(`직원 미지정 ${skippedNoEmp}건 제외`);
+        docStatusMessage = messages.length ? messages.join(" · ") : "등록된 항목이 없습니다.";
+        paint();
+      };
+
+      // ---- 퇴사자 정산 핸들러 ----
+      const resignStartBtn = document.getElementById("resign-start-btn");
+      if (resignStartBtn) resignStartBtn.onclick = () => {
+        const name = document.getElementById("resign-name").value.trim();
+        const hireDate = getDateGroupValue(root.querySelector(".date-group.resign-hire"));
+        const resignDate = getDateGroupValue(root.querySelector(".date-group.resign-date"));
+        const comp = Number(document.getElementById("resign-comp").value) || 0;
+        if (!hireDate) { root.querySelector(".date-group.resign-hire .dg-y").focus(); return; }
+        if (!resignDate) { root.querySelector(".date-group.resign-date .dg-y").focus(); return; }
+        if (parseDate(resignDate) <= parseDate(hireDate)) { alert("퇴사일은 입사일보다 이후여야 합니다."); return; }
+        resignActive = { name, hireDate, resignDate, compGranted: comp, promotedDaysOverride: null, usageLog: [] };
+        paint();
+      };
+
+      const resignLogAddBtn = document.getElementById("resign-log-add-btn");
+      if (resignLogAddBtn) resignLogAddBtn.onclick = () => {
+        const dateGroup = root.querySelector(".date-group.resign-log-date");
+        const date = getDateGroupValue(dateGroup);
+        const type = document.getElementById("resign-log-type").value;
+        const days = Number(document.getElementById("resign-log-days").value) || 0;
+        const reason = document.getElementById("resign-log-reason").value.trim();
+        if (!date) { dateGroup.querySelector(".dg-y").focus(); return; }
+        if (days <= 0) { alert("사용 일수를 입력해주세요."); return; }
+        resignActive.usageLog.push({ date, type, days, reason });
+        paint();
+      };
+
+      root.querySelectorAll(".resign-usage-del").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          resignActive.usageLog.splice(idx, 1);
+          paint();
+        };
+      });
+
+      const resignPromotedInput = document.getElementById("resign-promoted");
+      if (resignPromotedInput) resignPromotedInput.addEventListener("change", () => {
+        resignActive.promotedDaysOverride = Number(resignPromotedInput.value) || 0;
+        paint();
+      });
+
+      const resignDocParseBtn = document.getElementById("resign-doc-parse-btn");
+      if (resignDocParseBtn) resignDocParseBtn.onclick = async () => {
+        const fileInput = document.getElementById("resign-doc-upload");
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) { alert("파일을 먼저 선택해주세요."); return; }
+        resignDocParseError = null;
+        resignDocParseBtn.textContent = "분석 중…";
+        resignDocParseBtn.disabled = true;
+        try {
+          const isPdf = /\.pdf$/i.test(file.name);
+          const result = isPdf ? await parsePdfFile(file) : await parseExcelFile(file);
+          resignDocRawText = result.rawText;
+          const valid = result.rows.filter((r) => r.date);
+          if (!valid.length) {
+            resignDocParseError = "파일에서 날짜 정보를 인식하지 못했습니다. 아래 '인식된 원문 보기'를 확인해주세요.";
+            resignDocPreviewRows = null;
+          } else {
+            resignDocPreviewRows = valid;
+          }
+        } catch (e) {
+          console.error(e);
+          resignDocParseError = "파일을 분석하는 중 오류가 발생했습니다: " + e.message;
+          resignDocPreviewRows = null;
+        }
+        paint();
+      };
+
+      const resignDocDiscardBtn = document.getElementById("resign-doc-discard-btn");
+      if (resignDocDiscardBtn) resignDocDiscardBtn.onclick = () => { resignDocPreviewRows = null; resignDocParseError = null; resignDocRawText = null; paint(); };
+
+      root.querySelectorAll(".rdp-remove").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-idx"));
+          resignDocPreviewRows.splice(idx, 1);
+          if (!resignDocPreviewRows.length) resignDocPreviewRows = null;
+          paint();
+        };
+      });
+
+      const resignDocConfirmBtn = document.getElementById("resign-doc-confirm-btn");
+      if (resignDocConfirmBtn) resignDocConfirmBtn.onclick = () => {
+        const rowEls = root.querySelectorAll(".resign-doc-row");
+        rowEls.forEach((rowEl) => {
+          const date = getDateGroupValue(rowEl.querySelector(".date-group.rdp-date"));
+          const type = rowEl.querySelector(".rdp-type").value;
+          const days = Number(rowEl.querySelector(".rdp-days").value) || 0;
+          const reason = rowEl.querySelector(".rdp-reason").value.trim();
+          if (date && days > 0) resignActive.usageLog.push({ date, type, days, reason });
+        });
+        resignDocPreviewRows = null;
+        paint();
+      };
+
+      const resignSaveBtn = document.getElementById("resign-save-btn");
+      if (resignSaveBtn) resignSaveBtn.onclick = () => {
+        resignations.push({ id: genId(), ...resignActive });
+        saveResign();
+        resignActive = null;
+        paint();
+      };
+      const resignCancelBtn = document.getElementById("resign-cancel-btn");
+      if (resignCancelBtn) resignCancelBtn.onclick = () => {
+        if (confirm("작성 중인 정산 내용이 사라집니다. 취소하시겠습니까?")) { resignActive = null; paint(); }
+      };
+      root.querySelectorAll(".resign-del").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-id");
+          resignations = resignations.filter((r) => r.id !== id);
+          saveResign();
+          paint();
+        };
+      });
+
+      root.querySelectorAll(".date-group").forEach(wireDateGroup);
+    }
+
+    load();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
