@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>연차 관리 대시보드 · 크림웨이브</title>
+<title>연차 관리 대시보드(1월 1일 발생 기준) · 크림웨이브</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -462,30 +462,38 @@
   }
 
   function calcLeave(hireDate, baseDate) {
-    const anniversary1 = addYears(hireDate, 1);
-    const jan1ThisYear = new Date(baseDate.getFullYear(), 0, 1);
-    if (anniversary1 > baseDate) {
+    const hireYear = hireDate.getFullYear();
+    const nextJan1 = new Date(hireYear + 1, 0, 1);
+
+    if (baseDate < nextJan1) {
+      // 입사연도(첫 회계연도 전환 전): 매월 개근 시 1일(최대 11일), 비례연차는 다음 해 1월 1일에 지급 예정(대기 상태)
       const monthsWorked = fullMonthsBetween(hireDate, baseDate);
       const monthlyLeave = Math.min(11, monthsWorked);
-      const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
+      const hireYearEnd = new Date(hireYear, 11, 31);
       const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
       const proRated = round1((15 * daysInHireYear) / 365);
-      return { statusKey: "a", statusLabel: "입사 1년 미만", granted: monthlyLeave, anniversary: anniversary1, proRated,
-        detail: `개근 가정 시 월차 ${monthlyLeave}일 발생(최대 11일) · 비례연차 ${proRated}일은 1주년(${fmt(anniversary1)})에 지급 예정` };
+      return { statusKey: "a", statusLabel: "입사연도(비례연차 대기)", granted: monthlyLeave, anniversary: nextJan1, proRated,
+        detail: `개근 가정 시 월차 ${monthlyLeave}일 발생(최대 11일) · 비례연차 ${proRated}일은 ${fmt(nextJan1)}에 지급 예정` };
     }
-    if (anniversary1 <= jan1ThisYear) {
-      const serviceYears = fullYearsBetween(hireDate, jan1ThisYear);
-      const annual = annualFormula(Math.max(1, serviceYears));
-      return { statusKey: "b", statusLabel: "정상 편입", granted: annual, anniversary: null, proRated: 0,
-        detail: `${fmt(jan1ThisYear)} 기준 근속 ${serviceYears}년차 → 연차 ${annual}일 일괄 발생` };
+
+    const baseYear = baseDate.getFullYear();
+    const yearsSinceHire = baseYear - hireYear; // 1 = 입사연도 바로 다음 해(전환연도), 2 = 그 다음 해...
+    const jan1ThisYear = new Date(baseYear, 0, 1);
+
+    if (yearsSinceHire === 1) {
+      // 전환연도: 입사연도에 실제 근무한 기간에 비례하는 비례연차를 지급.
+      // 비례연차(15/365 비례)는 어떤 경우에도 월차 기준(최대 11일)을 상회하므로,
+      // 월차를 별도로 더하지 않고 비례연차로 대체(중복 합산 방지)
+      const hireYearEnd = new Date(hireYear, 11, 31);
+      const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
+      const proRated = roundUp((15 * daysInHireYear) / 365);
+      return { statusKey: "b", statusLabel: "정상 편입(비례연차 지급)", granted: proRated, anniversary: null, proRated: 0,
+        detail: `${fmt(jan1ThisYear)} 입사연도 비례연차 지급(재직 ${daysInHireYear}일/365 → 15일 중 비례, 월차 대체)` };
     }
-    const monthsWorked = fullMonthsBetween(hireDate, anniversary1);
-    const monthlyLeave = Math.min(11, monthsWorked);
-    const hireYearEnd = new Date(hireDate.getFullYear(), 11, 31);
-    const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
-    const proRated = round1((15 * daysInHireYear) / 365);
-    return { statusKey: "c", statusLabel: "올해 1주년 도래", granted: roundUp(monthlyLeave + proRated), anniversary: anniversary1, proRated,
-      detail: `월차 ${monthlyLeave}일 + 비례연차 ${proRated}일(1주년 ${fmt(anniversary1)} 지급) · 내년 1/1부터 정식 편입` };
+    const serviceYears = yearsSinceHire - 1;
+    const annual = annualFormula(Math.max(1, serviceYears));
+    return { statusKey: "b", statusLabel: "정상 편입", granted: annual, anniversary: null, proRated: 0,
+      detail: `${fmt(jan1ThisYear)} 기준 근속 ${serviceYears}년차 → 연차 ${annual}일 일괄 발생` };
   }
 
   function computeResignSettlement(active) {
@@ -712,7 +720,6 @@
 
       const countA = computed.filter((c) => c.statusKey === "a").length;
       const countB = computed.filter((c) => c.statusKey === "b").length;
-      const countC = computed.filter((c) => c.statusKey === "c").length;
 
 
       const upcoming = computed
@@ -768,7 +775,7 @@
       const upcomingHtml = upcoming.length
         ? upcoming.map((u) => `
           <div class="upcoming-item">
-            <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${fmt(u.anniversary)} 1주년 · 비례연차 ${roundUp(u.proRated)}일 예정</div></div>
+            <div><div class="name">${escapeHtml(u.name)}</div><div class="meta">${fmt(u.anniversary)} 1월 1일 · 비례연차 ${roundUp(u.proRated)}일 예정</div></div>
             <span class="dday ${u.dday <= 14 ? "urgent" : ""}">${u.dday === 0 ? "오늘" : "D-" + u.dday}</span>
           </div>`).join("")
         : `<div class="empty-mini">90일 이내 비례연차 지급 예정자가 없습니다.</div>`;
@@ -803,9 +810,8 @@
         total: computed,
         a: computed.filter((c) => c.statusKey === "a"),
         b: computed.filter((c) => c.statusKey === "b"),
-        c: computed.filter((c) => c.statusKey === "c"),
       };
-      const statLabels = { total: "전체 등록 인원", a: "입사 1년 미만", b: "정상 편입", c: "올해 1주년 도래" };
+      const statLabels = { total: "전체 등록 인원", a: "입사연도(비례연차 대기)", b: "정상 편입" };
       let breakdownHtml = "";
       if (selectedStat && statGroups[selectedStat]) {
         const list = statGroups[selectedStat];
@@ -1000,9 +1006,8 @@
         home: `
         <div class="stat-grid">
           <div class="stat-card accent-total clickable" data-stat="total"><div class="n">${computed.length}</div><div class="l">전체 등록 인원</div></div>
-          <div class="stat-card accent-a clickable" data-stat="a"><div class="n">${countA}</div><div class="l">입사 1년 미만</div></div>
+          <div class="stat-card accent-a clickable" data-stat="a"><div class="n">${countA}</div><div class="l">입사연도(비례연차 대기)</div></div>
           <div class="stat-card accent-b clickable" data-stat="b"><div class="n">${countB}</div><div class="l">정상 편입</div></div>
-          <div class="stat-card accent-c clickable" data-stat="c"><div class="n">${countC}</div><div class="l">올해 1주년 도래</div></div>
         </div>
         ${breakdownHtml}
         <div class="card">
@@ -1049,7 +1054,7 @@
             </table>
           </div>
           <div class="footnote">
-            ※ 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 사내 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
+            ※ 이 버전은 신규 입사자의 비례연차를 <b>입사연도 다음 해 1월 1일</b>에 일괄 지급하는 방식입니다(입사 1주년을 기다리지 않음). 근로기준법 제60조 기준(15일 + 3년차부터 매 2년마다 1일 가산, 최대 25일)과 회계연도 기준 연차 운영방식을 반영한 추정치입니다.
             연차·대체휴가 사용일수는 "휴가 등록" 탭에 입력한 내역의 합계로 자동 계산됩니다. 육아휴직·무급휴직 등 근속기간 산입 제외 사유는 반영되어 있지 않습니다.
             최종 지급 연차일수는 인사운영팀 확인이 필요합니다.
           </div>
@@ -1222,9 +1227,9 @@
       root.innerHTML = `
         <div class="top-row">
           <div>
-            <div class="eyebrow">HR AUTOMATION · 크림웨이브 인사운영팀</div>
-            <h1>연차 관리 대시보드</h1>
-            <p class="sub">회계연도(매년 1/1) 기준 연차 · 입사 1주년 비례연차 · 대체휴가를 함께 관리합니다.</p>
+            <div class="eyebrow">HR AUTOMATION · 크림웨이브 인사운영팀 · 1월 1일 발생 기준</div>
+            <h1>연차 관리 대시보드 <span style="font-size:14px; font-weight:700; color:var(--teal); background:var(--teal-bg); padding:3px 10px; border-radius:999px; vertical-align:middle;">1월 1일 발생 기준</span></h1>
+            <p class="sub">회계연도(매년 1/1) 기준 연차 · 입사연도 비례연차는 다음 해 1월 1일 지급 · 대체휴가를 함께 관리합니다.</p>
           </div>
           <div class="top-right">
             <span class="sync-badge ${fbDb ? "on" : "off"}">${fbDb ? "🟢 실시간 공유 중" : "⚪ 이 브라우저에만 저장(로컬 모드)"}</span>
