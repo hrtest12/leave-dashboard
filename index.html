@@ -315,7 +315,9 @@
   async function parseExcelFile(file) {
     if (typeof XLSX === "undefined") throw new Error("엑셀 라이브러리를 불러오지 못했습니다.");
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    // cellDates 옵션은 시간대에 따라 날짜가 하루 앞뒤로 밀리는 문제가 있어 사용하지 않음.
+    // 날짜 셀은 순수 일련번호(raw)로 받아서 SSF.parse_date_code로 직접 계산 → 시간대 영향 전혀 없음.
+    const wb = XLSX.read(buf, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     if (!json.length) return { rows: [], rawText: null };
@@ -327,16 +329,16 @@
     const kReason = findKey(["신청사유", "사유"]);
     const kType = findKey(["휴가유형", "유형"]);
     function cellToDateStr(val) {
+      // 엑셀 날짜 일련번호(예: 46206) - 시간대와 무관하게 정확한 날짜 계산
+      const num = Number(val);
+      if (val !== "" && !isNaN(num) && num > 20000 && num < 90000) {
+        const parsed = XLSX.SSF.parse_date_code(num);
+        if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+      }
       if (val instanceof Date && !isNaN(val)) return dateToStr(val);
       const s = String(val || "");
       const m = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
       if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
-      // 엑셀 날짜 일련번호(예: 46000)로 저장된 경우
-      const num = Number(val);
-      if (!isNaN(num) && num > 20000 && num < 90000) {
-        const parsed = XLSX.SSF.parse_date_code(num);
-        if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
-      }
       return "";
     }
     const rows = json.map((row) => {
