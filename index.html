@@ -251,44 +251,53 @@
   }
 
   // ---- 전자결재 문서(PDF/Excel) 자동 인식 ----
+  // PDF에서 추출되는 텍스트는 라벨 글자 사이사이에 공백이 끼어드는 경우가 많아(예: "휴 가 신 청 일"),
+  // 공백을 완전히 제거한 compact 버전으로 라벨/날짜/숫자를 찾고, 사유처럼 자연스러운 문장은
+  // 공백을 한 칸으로 정리한 flat 버전에서 찾는다.
   function guessTypeFromText(text) {
     return /대체\s*휴가|대체휴가/.test(text) ? "comp" : "annual";
   }
-  function extractDateNearLabel(flat) {
+  function extractDateNearLabel(compact) {
     // 1) "기안일" 라벨 뒤에 오는 날짜를 먼저 파악해서 제외 대상으로 삼음
     let gianDate = null;
-    const gianIdx = flat.indexOf("기안일");
+    const gianIdx = compact.indexOf("기안일");
     if (gianIdx !== -1) {
-      const gm = flat.slice(gianIdx, gianIdx + 30).match(/(\d{4}-\d{2}-\d{2})/);
+      const gm = compact.slice(gianIdx, gianIdx + 30).match(/(\d{4}-\d{2}-\d{2})/);
       if (gm) gianDate = gm[1];
     }
     // 2) "신청일"이라는 글자가 붙어있는 라벨(휴가신청일) 뒤 넓은 범위에서 날짜를 탐색
     //    (기안일과 같은 날짜가 먼저 걸리면 건너뛰고 다른 날짜를 찾음)
-    const reqIdx = flat.search(/신청일/);
+    const reqIdx = compact.search(/신청일/);
     if (reqIdx !== -1) {
-      const windowMatches = [...flat.slice(reqIdx, reqIdx + 60).matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+      const windowMatches = [...compact.slice(reqIdx, reqIdx + 60).matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
       const differing = windowMatches.find((d) => d !== gianDate);
       if (differing) return differing;
       if (windowMatches.length) return windowMatches[0];
     }
     // 3) 라벨 탐색이 실패하면, 문서에 있는 날짜 중 기안일 날짜와 다른 것을 채택
-    const allDates = [...flat.matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+    const allDates = [...compact.matchAll(/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
     const uniqDates = [...new Set(allDates)];
     const other = uniqDates.find((d) => d !== gianDate);
     return other || uniqDates[0] || "";
   }
+  const TITLE_WORDS = "(주임|사원|대리|과장|차장|부장|팀장|실장|이사|대표)";
   function extractFieldsFromText(text) {
     const flat = text.replace(/\s+/g, " ");
-    const nameMatch = flat.match(/기안자\s*([가-힣]{2,4})/);
-    const dateMatch = extractDateNearLabel(flat);
-    const daysMatch = flat.match(/신청\s*휴가수\s*([\d.]+)\s*d/i);
-    const reasonMatch = flat.match(/([가-힣][가-힣\s]{5,80})$/) || flat.match(/신청사유[^가-힣]*([가-힣][^d]{2,60}?)(?:연차|대체휴가|휴가신청일|보유휴가|$)/);
+    const compact = text.replace(/\s+/g, "");
+    const nameMatch =
+      compact.match(new RegExp(`기안자([가-힣]{2,4})${TITLE_WORDS}`)) ||
+      compact.match(/기안자([가-힣]{2,3})/);
+    const dateMatch = extractDateNearLabel(compact);
+    const daysMatch = compact.match(/신청휴가수([\d.]+)d/i);
+    const reasonMatch =
+      flat.match(/([가-힣][가-힣\s]{5,80})\.?\s*$/) ||
+      flat.match(/신청사유[^가-힣]*([가-힣][^d]{2,60}?)(?:연차|대체휴가|휴가신청일|보유휴가|$)/);
     return {
       name: nameMatch ? nameMatch[1] : "",
       date: dateMatch || "",
       days: daysMatch ? Number(daysMatch[1]) : 1,
       reason: reasonMatch ? reasonMatch[1].trim() : "",
-      type: guessTypeFromText(flat),
+      type: guessTypeFromText(compact),
     };
   }
   async function parsePdfFile(file) {
@@ -306,23 +315,35 @@
   async function parseExcelFile(file) {
     if (typeof XLSX === "undefined") throw new Error("엑셀 라이브러리를 불러오지 못했습니다.");
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     if (!json.length) return { rows: [], rawText: null };
     const keys = Object.keys(json[0]);
     const findKey = (patterns) => keys.find((k) => patterns.some((p) => k.includes(p)));
-    const kName = findKey(["기안자", "성명", "이름", "신청자"]);
-    const kDate = findKey(["휴가신청일", "신청일", "날짜"]);
+    const kName = findKey(["기안자", "성명", "이름", "신청자", "직원", "담당자"]);
+    const kDate = findKey(["휴가신청일", "신청일", "날짜", "일자"]);
     const kDays = findKey(["신청 휴가수", "휴가수", "일수"]);
     const kReason = findKey(["신청사유", "사유"]);
     const kType = findKey(["휴가유형", "유형"]);
+    function cellToDateStr(val) {
+      if (val instanceof Date && !isNaN(val)) return dateToStr(val);
+      const s = String(val || "");
+      const m = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+      // 엑셀 날짜 일련번호(예: 46000)로 저장된 경우
+      const num = Number(val);
+      if (!isNaN(num) && num > 20000 && num < 90000) {
+        const parsed = XLSX.SSF.parse_date_code(num);
+        if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+      }
+      return "";
+    }
     const rows = json.map((row) => {
-      const rawDate = String(row[kDate] || "").match(/\d{4}-\d{2}-\d{2}/);
       const rawDays = String(row[kDays] || "").match(/[\d.]+/);
       return {
         name: String(row[kName] || "").replace(/\s*(주임|사원|대리|과장|차장|부장|팀장|실장|이사|대표).*$/, "").trim(),
-        date: rawDate ? rawDate[0] : "",
+        date: cellToDateStr(row[kDate]),
         days: rawDays ? Number(rawDays[0]) : 1,
         reason: String(row[kReason] || "").trim(),
         type: guessTypeFromText(String(row[kType] || "")),
