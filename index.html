@@ -169,6 +169,10 @@
 #leave-app .filter-bar label { display: block; font-size: 11px; color: var(--gray); margin-bottom: 4px; font-weight: 600; }
 #leave-app .filter-bar select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--cream); color: var(--ink); min-width: 110px; }
 #leave-app .filter-bar select:focus { outline: 2px solid var(--navy); outline-offset: 1px; background: var(--paper); }
+#leave-app .sort-toggle { display: inline-flex; gap: 2px; margin-left: 8px; vertical-align: middle; }
+#leave-app .sort-toggle-btn { background: var(--cream); border: 1px solid var(--line); font-size: 10.5px; font-weight: 700; color: var(--gray); padding: 3px 8px; cursor: pointer; border-radius: 999px; }
+#leave-app .sort-toggle-btn.active { background: var(--navy); color: white; border-color: var(--navy); }
+#leave-app .sort-toggle-btn:hover:not(.active) { background: var(--line); }
 #leave-app tbody tr:hover { background: #FBFAF7; }
 #leave-app tr:last-child td { border-bottom: none; }
 #leave-app .status-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
@@ -602,6 +606,7 @@
     let empYearFilter = "all";
     let empDeptFilter = "all";
     let empSortOrder = "hireAsc";
+    let grantSortOrder = "name"; // "name" | "hireAsc" — 지급된/지급예정 비례연차 목록 정렬 기준
     let currentPage = "home";
     let selectedStat = null;
     let docPreviewRows = null;
@@ -796,13 +801,24 @@
       const countB = computed.filter((c) => c.statusKey === "b").length;
 
       // 다음 1월 1일에 일괄 지급될 비례연차 합계 (입사연도 대기 중인 직원 전체)
-      const pendingList = computed.filter((c) => c.statusKey === "a");
+      function sortByGrantOrder(list) {
+        return grantSortOrder === "hireAsc"
+          ? list.slice().sort((a, b) => a.hireDate - b.hireDate)
+          : list.slice().sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      }
+      function grantSortToggleHtml() {
+        return `<span class="sort-toggle">
+          <button class="sort-toggle-btn ${grantSortOrder === "name" ? "active" : ""}" data-sort="name">이름순</button>
+          <button class="sort-toggle-btn ${grantSortOrder === "hireAsc" ? "active" : ""}" data-sort="hireAsc">입사일순</button>
+        </span>`;
+      }
+      const pendingList = sortByGrantOrder(computed.filter((c) => c.statusKey === "a"));
       const pendingCount = pendingList.length;
       const pendingTotalDays = pendingList.reduce((s, c) => s + roundUp(c.proRated), 0);
       const pendingNextJan1 = pendingList.length ? fmt(pendingList[0].anniversary) : "";
 
       // 올해 1월 1일에 이미 지급된 비례연차 (전환연도에 해당하는 직원들)
-      const grantedList = computed.filter((c) => c.justGrantedProrate);
+      const grantedList = sortByGrantOrder(computed.filter((c) => c.justGrantedProrate));
       const grantedCount = grantedList.length;
       const grantedDate = grantedList.length ? fmt(grantedList[0].grantedDate) : "";
       const jan1ThisYearForHome = fmt(new Date(today.getFullYear(), 0, 1));
@@ -1202,7 +1218,7 @@
           </div>
         </div>
         <div class="card" style="margin-top:16px;">
-          <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span></h2>
+          <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
           ${grantedCount > 0
             ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
             : `<div class="empty-mini">올해 1월 1일에 비례연차를 지급받은 직원이 없습니다.</div>`}
@@ -1232,12 +1248,12 @@
         </div>
         ${grantedCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--teal-bg); border:none;">
-          <h2 style="color:var(--teal);">${grantedDate} 지급된 비례연차 (전환연도) <span class="count-badge">${grantedCount}명</span></h2>
+          <h2 style="color:var(--teal);">${grantedDate} 지급된 비례연차 (전환연도) <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
           ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")}
         </div>` : ""}
         ${pendingCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--amber-bg); border:none;">
-          <h2 style="color:var(--amber);">다음 1월 1일(${pendingNextJan1}) 지급 예정 비례연차</h2>
+          <h2 style="color:var(--amber);">다음 1월 1일(${pendingNextJan1}) 지급 예정 비례연차 ${grantSortToggleHtml()}</h2>
           <div class="stat-grid" style="margin-bottom:0;">
             <div class="stat-card accent-a"><div class="n">${pendingCount}명</div><div class="l">비례연차 대기 중</div></div>
             <div class="stat-card accent-a"><div class="n">${pendingTotalDays}일</div><div class="l">지급 예정 총 일수</div></div>
@@ -1658,6 +1674,10 @@
       if (empDeptFilterEl) empDeptFilterEl.onchange = () => { empDeptFilter = empDeptFilterEl.value; paint(); };
       const empSortOrderEl = document.getElementById("emp-sort-order");
       if (empSortOrderEl) empSortOrderEl.onchange = () => { empSortOrder = empSortOrderEl.value; paint(); };
+
+      root.querySelectorAll(".sort-toggle-btn").forEach((btn) => {
+        btn.onclick = () => { grantSortOrder = btn.getAttribute("data-sort"); paint(); };
+      });
 
       root.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.onclick = () => { currentPage = btn.getAttribute("data-page"); paint(); };
