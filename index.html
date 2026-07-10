@@ -163,7 +163,12 @@
 #leave-app .table-scroll { overflow-x: auto; }
 #leave-app table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; min-width: 1100px; }
 #leave-app th { text-align: left; background: var(--navy); color: white; padding: 10px 12px; font-weight: 700; font-size: 11.5px; white-space: nowrap; }
-#leave-app td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+#leave-app td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+#leave-app td.detail { white-space: normal; }
+#leave-app .filter-bar { display: flex; gap: 14px; align-items: flex-end; padding: 14px 20px 0; flex-wrap: wrap; }
+#leave-app .filter-bar label { display: block; font-size: 11px; color: var(--gray); margin-bottom: 4px; font-weight: 600; }
+#leave-app .filter-bar select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--cream); color: var(--ink); min-width: 110px; }
+#leave-app .filter-bar select:focus { outline: 2px solid var(--navy); outline-offset: 1px; background: var(--paper); }
 #leave-app tbody tr:hover { background: #FBFAF7; }
 #leave-app tr:last-child td { border-bottom: none; }
 #leave-app .status-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
@@ -573,6 +578,9 @@
     let editingId = null;
     let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let weekCalOffset = 0; // 0 = 이번 주, +1 = 다음 주, -1 = 지난 주
+    let empYearFilter = "all";
+    let empDeptFilter = "all";
+    let empSortOrder = "hireAsc";
     let currentPage = "home";
     let selectedStat = null;
     let docPreviewRows = null;
@@ -791,8 +799,20 @@
         return unmatched + opts || `<option value="">등록된 직원 없음</option>`;
       }
 
-      const rows = computed
-        .sort((a, b) => a.hireDate - b.hireDate)
+      // 직원 현황 필터/정렬 옵션 계산
+      const availYears = [...new Set(computed.map((c) => c.hireDate.getFullYear()))].sort((a, b) => b - a);
+      const availDepts = [...new Set(computed.map((c) => c.department).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+
+      let filteredComputed = computed.filter((c) => {
+        if (empYearFilter !== "all" && c.hireDate.getFullYear() !== Number(empYearFilter)) return false;
+        if (empDeptFilter !== "all" && c.department !== empDeptFilter) return false;
+        return true;
+      });
+      if (empSortOrder === "hireAsc") filteredComputed.sort((a, b) => a.hireDate - b.hireDate);
+      else if (empSortOrder === "hireDesc") filteredComputed.sort((a, b) => b.hireDate - a.hireDate);
+      else if (empSortOrder === "nameAsc") filteredComputed.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+      const rows = filteredComputed
         .map((c) => {
           if (c.id === editingId) {
             const y = c.hireDate.getFullYear(), m = String(c.hireDate.getMonth() + 1).padStart(2, "0"), d = String(c.hireDate.getDate()).padStart(2, "0");
@@ -1205,7 +1225,31 @@
         <div class="table-card">
           <div class="table-head">
             <h2 style="margin:0;">전체 직원 현황</h2>
-            <span class="count-badge">총 ${computed.length}명</span>
+            <span class="count-badge">${filteredComputed.length}명 / 전체 ${computed.length}명</span>
+          </div>
+          <div class="filter-bar">
+            <div>
+              <label>입사연도</label>
+              <select id="emp-year-filter">
+                <option value="all" ${empYearFilter === "all" ? "selected" : ""}>전체</option>
+                ${availYears.map((y) => `<option value="${y}" ${empYearFilter === String(y) ? "selected" : ""}>${y}년</option>`).join("")}
+              </select>
+            </div>
+            <div>
+              <label>부서</label>
+              <select id="emp-dept-filter">
+                <option value="all" ${empDeptFilter === "all" ? "selected" : ""}>전체</option>
+                ${availDepts.map((dpt) => `<option value="${escapeHtml(dpt)}" ${empDeptFilter === dpt ? "selected" : ""}>${escapeHtml(dpt)}</option>`).join("")}
+              </select>
+            </div>
+            <div>
+              <label>정렬</label>
+              <select id="emp-sort-order">
+                <option value="hireAsc" ${empSortOrder === "hireAsc" ? "selected" : ""}>입사일 빠른순</option>
+                <option value="hireDesc" ${empSortOrder === "hireDesc" ? "selected" : ""}>입사일 늦은순</option>
+                <option value="nameAsc" ${empSortOrder === "nameAsc" ? "selected" : ""}>이름순</option>
+              </select>
+            </div>
           </div>
           <div class="table-scroll">
             <table>
@@ -1213,7 +1257,7 @@
                 <th>이름</th><th>부서</th><th>직급</th><th>입사일</th><th>상태</th><th>연차발생</th><th>연차사용</th><th>연차잔여</th>
                 <th>대체발생</th><th>대체사용</th><th>대체잔여</th><th>산출 근거</th><th></th>
               </tr></thead>
-              <tbody>${rows || `<tr><td colspan="13" class="empty">등록된 직원이 없습니다.</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="13" class="empty">조건에 맞는 직원이 없습니다.</td></tr>`}</tbody>
             </table>
           </div>
           <div class="footnote">
@@ -1586,6 +1630,13 @@
       const weekCalNextBtn = document.getElementById("week-cal-next");
       if (weekCalPrevBtn) weekCalPrevBtn.onclick = () => { weekCalOffset -= 1; paint(); };
       if (weekCalNextBtn) weekCalNextBtn.onclick = () => { weekCalOffset += 1; paint(); };
+
+      const empYearFilterEl = document.getElementById("emp-year-filter");
+      if (empYearFilterEl) empYearFilterEl.onchange = () => { empYearFilter = empYearFilterEl.value; paint(); };
+      const empDeptFilterEl = document.getElementById("emp-dept-filter");
+      if (empDeptFilterEl) empDeptFilterEl.onchange = () => { empDeptFilter = empDeptFilterEl.value; paint(); };
+      const empSortOrderEl = document.getElementById("emp-sort-order");
+      if (empSortOrderEl) empSortOrderEl.onchange = () => { empSortOrder = empSortOrderEl.value; paint(); };
 
       root.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.onclick = () => { currentPage = btn.getAttribute("data-page"); paint(); };
