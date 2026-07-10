@@ -313,11 +313,21 @@
       return { total: roundUp(monthlyLeave), detail, completedTotal: 0 };
     }
 
-    // 입사연도 비례연차: 15/365 비례가 최대 11일의 월차 기준을 항상 상회하므로,
-    // 월차를 별도로 더하지 않고 비례연차로 대체(중복 합산 방지)
+    // 입사연도 비례연차(그 기간 몫) 지급. 단, 아직 개인 입사 1주년이 지나지 않았다면
+    // 근로기준법 제60조②의 월차(최대 11일)가 1/1 이후에도 별도로 계속 발생하므로 함께 합산.
+    const anniversary1 = addYears(hireDate, 1);
     const hireYearProrate = round1(15 * (daysInHireYear / 365));
-    let total = hireYearProrate;
-    detail.push({ label: `입사연도 비례연차(${fmt(nextJan1)} 지급 기준, ${daysInHireYear}일/365 — 월차 대체)`, days: hireYearProrate });
+    const monthsWorkedBeforeJan1 = fullMonthsBetween(hireDate, nextJan1);
+    const monthlyLeaveBeforeJan1 = Math.min(11, monthsWorkedBeforeJan1);
+    const monthlyCutoff = endDate < anniversary1 ? endDate : anniversary1;
+    const monthsWorkedTotal = fullMonthsBetween(hireDate, monthlyCutoff);
+    const monthlyLeaveTotal = Math.min(11, monthsWorkedTotal);
+    const monthlyLeaveNew = round1(monthlyLeaveTotal - monthlyLeaveBeforeJan1);
+    let total = round1(hireYearProrate + monthlyLeaveNew);
+    detail.push({ label: `입사연도 비례연차(${fmt(nextJan1)} 지급 기준, ${daysInHireYear}일/365)`, days: hireYearProrate });
+    if (monthlyLeaveNew > 0) {
+      detail.push({ label: `1주년(${fmt(anniversary1)}) 전까지 추가 발생한 월차(최대 11일)`, days: monthlyLeaveNew });
+    }
 
     let year = hireYear + 1;
     while (true) {
@@ -525,15 +535,26 @@
     const jan1ThisYear = new Date(baseYear, 0, 1);
 
     if (yearsSinceHire === 1) {
-      // 전환연도: 입사연도에 실제 근무한 기간에 비례하는 비례연차를 지급.
-      // 비례연차(15/365 비례)는 어떤 경우에도 월차 기준(최대 11일)을 상회하므로,
-      // 월차를 별도로 더하지 않고 비례연차로 대체(중복 합산 방지)
+      // 전환연도: 입사연도에 실제 근무한 기간(9~12월 등)에 비례하는 비례연차를 지급.
+      // 이 비례연차는 "그 기간"에 대한 몫일 뿐이므로, 아직 개인 입사 1주년이 지나지 않았다면
+      // 근로기준법 제60조②의 월차(최대 11일)가 1/1 이후에도 별도로 계속 발생·합산됨.
+      const anniversary1 = addYears(hireDate, 1);
       const hireYearEnd = new Date(hireYear, 11, 31);
       const daysInHireYear = daysBetween(hireDate, hireYearEnd) + 1;
-      const proRated = roundUp((15 * daysInHireYear) / 365);
-      return { statusKey: "b", statusLabel: "정상 편입(비례연차 지급)", granted: proRated, anniversary: null, proRated: 0,
-        justGrantedProrate: true, grantedDate: jan1ThisYear,
-        detail: `${fmt(jan1ThisYear)} 입사연도 비례연차 지급(재직 ${daysInHireYear}일/365 → 15일 중 비례, 월차 대체)` };
+      const proRated = round1((15 * daysInHireYear) / 365);
+      const monthsWorkedBeforeThisYear = fullMonthsBetween(hireDate, nextJan1);
+      const monthlyLeaveBeforeThisYear = Math.min(11, monthsWorkedBeforeThisYear);
+      const stillUnder1Year = baseDate < anniversary1;
+      const monthlyCutoff = stillUnder1Year ? baseDate : anniversary1;
+      const monthsWorkedTotal = fullMonthsBetween(hireDate, monthlyCutoff);
+      const monthlyLeaveTotal = Math.min(11, monthsWorkedTotal);
+      const monthlyLeaveNew = round1(monthlyLeaveTotal - monthlyLeaveBeforeThisYear);
+      const total = roundUp(proRated + monthlyLeaveNew);
+      const detail = stillUnder1Year
+        ? `${fmt(jan1ThisYear)} 비례연차 ${proRated}일 지급 + 올해 새로 발생한 월차 ${monthlyLeaveNew}일(입사 1주년 전까지 계속 발생 · 1주년: ${fmt(anniversary1)})`
+        : `${fmt(jan1ThisYear)} 비례연차 ${proRated}일 지급 + 1주년(${fmt(anniversary1)})까지 새로 발생한 월차 ${monthlyLeaveNew}일 (이후 월차 발생 종료, 정식 연차체계로 편입)`;
+      return { statusKey: "b", statusLabel: "정상 편입(비례+월차)", granted: total, anniversary: null, proRated: 0,
+        justGrantedProrate: true, grantedDate: jan1ThisYear, detail };
     }
     const serviceYears = yearsSinceHire - 1;
     const annual = annualFormula(Math.max(1, serviceYears));
