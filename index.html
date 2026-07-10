@@ -606,7 +606,7 @@
     let empYearFilter = "all";
     let empDeptFilter = "all";
     let empSortOrder = "hireAsc";
-    let grantSortOrder = "name"; // "name" | "hireAsc" — 지급된/지급예정 비례연차 목록 정렬 기준
+    let grantSortOrder = "hireAsc"; // "name" | "hireAsc" — 지급된/지급예정 비례연차 목록 정렬 기준
     let currentPage = "home";
     let selectedStat = null;
     let docPreviewRows = null;
@@ -808,8 +808,8 @@
       }
       function grantSortToggleHtml() {
         return `<span class="sort-toggle">
-          <button class="sort-toggle-btn ${grantSortOrder === "name" ? "active" : ""}" data-sort="name">이름순</button>
           <button class="sort-toggle-btn ${grantSortOrder === "hireAsc" ? "active" : ""}" data-sort="hireAsc">입사일순</button>
+          <button class="sort-toggle-btn ${grantSortOrder === "name" ? "active" : ""}" data-sort="name">이름순</button>
         </span>`;
       }
       const pendingList = sortByGrantOrder(computed.filter((c) => c.statusKey === "a"));
@@ -1220,7 +1220,7 @@
         <div class="card" style="margin-top:16px;">
           <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
           ${grantedCount > 0
-            ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div>${grantSortOrder === "hireAsc" ? `<div class="meta">${fmt(c.hireDate)}</div>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
+            ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
             : `<div class="empty-mini">올해 1월 1일에 비례연차를 지급받은 직원이 없습니다.</div>`}
         </div>
         <div class="card" style="margin-top:16px;">
@@ -1249,7 +1249,7 @@
         ${grantedCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--teal-bg); border:none;">
           <h2 style="color:var(--teal);">${grantedDate} 지급된 비례연차 (전환연도) <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
-          ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div><div class="name" style="font-size:13px;">${escapeHtml(c.name)}</div>${grantSortOrder === "hireAsc" ? `<div class="meta">${fmt(c.hireDate)}</div>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")}
+          ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")}
         </div>` : ""}
         ${pendingCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--amber-bg); border:none;">
