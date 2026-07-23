@@ -558,6 +558,7 @@
         ? `${fmt(jan1ThisYear)} 비례연차 ${proRated}일 지급 + 올해 새로 발생한 월차 ${monthlyLeaveNew}일(입사 1주년 전까지 계속 발생 · 1주년: ${fmt(anniversary1)})`
         : `${fmt(jan1ThisYear)} 비례연차 ${proRated}일 지급 + 1주년(${fmt(anniversary1)})까지 새로 발생한 월차 ${monthlyLeaveNew}일 (이후 월차 발생 종료, 정식 연차체계로 편입)`;
       return { statusKey: "b", statusLabel: "정상 편입(비례+월차)", granted: total, anniversary: null, proRated: 0,
+        prorateAmount: proRated, monthlyNewAmount: monthlyLeaveNew,
         justGrantedProrate: true, grantedDate: jan1ThisYear, detail };
     }
     const serviceYears = yearsSinceHire - 1;
@@ -1220,7 +1221,7 @@
         <div class="card" style="margin-top:16px;">
           <h2>${grantedDate || jan1ThisYearForHome} 지급된 비례연차 <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
           ${grantedCount > 0
-            ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")
+            ? grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">비례 ${roundUp(c.prorateAmount)}일${c.monthlyNewAmount > 0 ? ` + 월차 ${roundUp(c.monthlyNewAmount)}일` : ""} <span style="color:var(--gray); font-weight:400;">(합계 ${c.granted}일)</span></span></div>`).join("")
             : `<div class="empty-mini">올해 1월 1일에 비례연차를 지급받은 직원이 없습니다.</div>`}
         </div>
         <div class="card" style="margin-top:16px;">
@@ -1249,7 +1250,7 @@
         ${grantedCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--teal-bg); border:none;">
           <h2 style="color:var(--teal);">${grantedDate} 지급된 비례연차 (전환연도) <span class="count-badge">${grantedCount}명</span> ${grantSortToggleHtml()}</h2>
-          ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">${c.granted}일</span></div>`).join("")}
+          ${grantedList.map((c) => `<div class="upcoming-item" style="padding:6px 0;"><div class="name" style="font-size:13px;">${escapeHtml(c.name)}${grantSortOrder === "hireAsc" ? ` <span style="color:var(--gray); font-weight:400; font-size:11.5px;">(${fmt(c.hireDate)})</span>` : ""}</div><span class="num" style="font-size:13px;">비례 ${roundUp(c.prorateAmount)}일${c.monthlyNewAmount > 0 ? ` + 월차 ${roundUp(c.monthlyNewAmount)}일` : ""} <span style="color:var(--gray); font-weight:400;">(합계 ${c.granted}일)</span></span></div>`).join("")}
         </div>` : ""}
         ${pendingCount > 0 ? `
         <div class="card" style="margin-bottom:16px; background:var(--amber-bg); border:none;">
